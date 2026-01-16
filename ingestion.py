@@ -28,7 +28,6 @@ def clean_files(path: Path):
     if path.is_dir():
         if path.name in IGNORED_DIRS:
             return []
-
         for child in path.iterdir():
             cleaned_files.extend(clean_files(child))
     elif path.is_file():
@@ -37,15 +36,22 @@ def clean_files(path: Path):
             path.suffix.lower() not in IGNORED_EXTENSIONS
         ):
             cleaned_files.append(path)
-
     return cleaned_files
 
+def send_to_parser(cleaned_files):
+    for file in cleaned_files:
+        extension=file.suffix.lower()
+        if extension==".py":
+            ast_parser(file)
+
+def ast_parser(file_path: Path):
+    pass
+        
+        
+        
 if __name__ == "__main__":
-    
     file_name=cloning("https://github.com/ManushreeBartaria/TrickIT.git")
     file_path="cloned_files/"+file_name
-    print(file_path)
     cleaned_files=clean_files(Path(file_path))
-    for file in cleaned_files:  
-        print(file)
+    send_to_parser(cleaned_files)
 
