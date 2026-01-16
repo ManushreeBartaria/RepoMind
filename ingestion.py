@@ -54,3 +54,4 @@ if __name__ == "__main__":
     cleaned_files=clean_files(Path(file_path))
     for file in cleaned_files:  
         print(file)
+
