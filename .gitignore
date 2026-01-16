@@ -4,7 +4,7 @@ venv/
 ENV/
 env/
 .venv/
-
+cloned_files/
 # Python cache
 __pycache__/
 *.py[cod]
