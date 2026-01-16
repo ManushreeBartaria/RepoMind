@@ -6,4 +6,7 @@ def cloning(git_link):
         git.Repo.clone_from(git_link, "cloned_files/" + repo_name)
     return repo_name
 if __name__ == "__main__":
-    cloning("https://github.com/ManushreeBartaria/TrickIT.git")
+    
+    file_name=cloning("https://github.com/ManushreeBartaria/TrickIT.git")
+    file_path="cloned_files/"+file_name
+    print(file_path)
