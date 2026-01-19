@@ -1,10 +1,15 @@
 import os
+import json                     
+from typing import List        
 import git
 from pathlib import Path
 import ast
 from tree_sitter import Language, Parser
 import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import HumanMessage, Document
 
 def cloning(git_link):
     repo_name = git_link.split("/")[-1].replace(".git", "")
@@ -244,6 +249,133 @@ def js_ast_parser(file_path: Path):
 
     return chunks
 
+
+#apply llm for frontened ingestion
+
+FRONTEND_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx"}
+
+GEMINI_MODEL="gemini-1.5-flash"
+TEMPERATURE=0
+
+##LLM Initialization
+llm = ChatGoogleGenerativeAI(model_name=GEMINI_MODEL, temperature=TEMPERATURE)
+
+# LLM Prompt
+SEMANTIC_CHUNK_PROMPT = """
+You are an expert software engineer.
+
+Split the following frontend source code into smaller semantic chunks.
+Each chunk must represent ONE clear responsibility or intent
+(e.g. API calls, state management, UI rendering, event handlers).
+
+Rules:
+- Do NOT modify the code
+- Do NOT invent new code
+- Keep chunks meaningful
+- Return VALID JSON only
+
+Output format:
+[
+  {
+    "title": "short semantic title",
+    "code": "exact code snippet"
+  }
+]
+
+Source code:
+----------------
+{code}
+----------------
+"""
+
+
+
+#gemini semantic chunking function
+def semantic_chunk_with_llm(code: str) -> List[dict]:
+    prompt = SEMANTIC_CHUNK_PROMPT.format(code=code)
+
+    response = llm.invoke(
+        [HumanMessage(content=prompt)]
+    )
+
+    try:
+        return json.loads(response.content)
+    except Exception:
+        return []
+    
+# CONVERT TO LANGCHAIN DOCS
+
+def semantic_chunks_to_documents(
+    chunks: List[dict],
+    file_path: Path
+) -> List[Document]:
+
+    docs = []
+    for chunk in chunks:
+        docs.append(
+            Document(
+                page_content=chunk["code"],
+                metadata={
+                    "file": str(file_path),
+                    "title": chunk["title"],
+                    "semantic": True
+                }
+            )
+        )
+    return docs
+
+# MAIN PIPELINE
+def process_chunks(
+    file_path: Path,
+    ast_chunks: List[dict]
+) -> List[Document]:
+    """
+    AST → (Gemini only for JS/TS) → LangChain Documents
+    """
+
+    documents = []
+
+    
+    # BACKEND FILES (NO LLM)
+    if file_path.suffix.lower() not in FRONTEND_EXTENSIONS:
+        for chunk in ast_chunks:
+            documents.append(
+                Document(
+                    page_content=chunk["code"],
+                    metadata={
+                        "file": str(file_path),
+                        "type": chunk.get("type"),
+                        "semantic": False
+                    }
+                )
+            )
+        return documents
+    
+ # FRONTEND FILES (GEMINI)
+   
+    for chunk in ast_chunks:
+        semantic_chunks = semantic_chunk_with_llm(chunk["code"])
+
+        # fallback if Gemini fails
+        if not semantic_chunks:
+            documents.append(
+                Document(
+                    page_content=chunk["code"],
+                    metadata={
+                        "file": str(file_path),
+                        "fallback": True
+                    }
+                )
+            )
+        else:
+            documents.extend(
+                semantic_chunks_to_documents(
+                    semantic_chunks,
+                    file_path
+                )
+            )
+
+    return documents
         
         
 if __name__ == "__main__":
