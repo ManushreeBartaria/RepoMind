@@ -311,78 +311,23 @@ def llm_chunking(chunks: List[dict]) -> List[dict]:
     return llm_chunks
 
 
-
-# def semantic_chunks_to_documents(
-#     chunks: List[dict],
-#     file_path: Path
-# ) -> List[Document]:
-
-#     docs = []
-#     for chunk in chunks:
-#         docs.append(
-#             Document(
-#                 page_content=chunk["code"],
-#                 metadata={
-#                     "file": str(file_path),
-#                     "title": chunk["title"],
-#                     "semantic": True
-#                 }
-#             )
-#         )
-#     return docs
-
-# # MAIN PIPELINE
-# def process_chunks(
-#     file_path: Path,
-#     ast_chunks: List[dict]
-# ) -> List[Document]:
-#     """
-#     AST → (Gemini only for JS/TS) → LangChain Documents
-#     """
-
-#     documents = []
-
-    
-#     # BACKEND FILES (NO LLM)
-#     if file_path.suffix.lower() not in FRONTEND_EXTENSIONS:
-#         for chunk in ast_chunks:
-#             documents.append(
-#                 Document(
-#                     page_content=chunk["code"],
-#                     metadata={
-#                         "file": str(file_path),
-#                         "type": chunk.get("type"),
-#                         "semantic": False
-#                     }
-#                 )
-#             )
-#         return documents
-    
-#  # FRONTEND FILES (GEMINI)
-   
-#     for chunk in ast_chunks:
-#         semantic_chunks = semantic_chunk_with_llm(chunk["code"])
-
-#         # fallback if Gemini fails
-#         if not semantic_chunks:
-#             documents.append(
-#                 Document(
-#                     page_content=chunk["code"],
-#                     metadata={
-#                         "file": str(file_path),
-#                         "fallback": True
-#                     }
-#                 )
-#             )
-#         else:
-#             documents.extend(
-#                 semantic_chunks_to_documents(
-#                     semantic_chunks,
-#                     file_path
-#                 )
-#             )
-
-#     return documents
+def langchain_documents(chunks: List[dict], file_path: Path
+) -> List[Document]:
+    docs = []
+    for chunk in chunks:
+        docs.append(
+            Document(
+                page_content=chunk["code"],
+                metadata={
+                    "file": str(file_path),
+                    "title": chunk["name"],
+                    "type": chunk["type"],
+                    "start_line": chunk["start_line"],
+                    "end_line": chunk["end_line"]
+                }
+            )
+        )
+    return docs
         
         
 if __name__ == "__main__":
@@ -403,13 +348,11 @@ if __name__ == "__main__":
     for file in js_files:
         chunks = js_ast_parser(file)
         all_chunks.extend(chunks)     
-        
+    
     print("Total chunks extracted:", len(all_chunks))
-
-    # Optional: see sample output
-    for chunk in all_chunks[:44]:
+    documents = langchain_documents(all_chunks, Path(file_path))
+    print("Total LangChain documents created:", len(documents))
+    for doc in documents[:44]:
         print("\n---")
-        print("Name:", chunk["name"])
-        print("Type:", chunk["type"])
-        print("Lines:", chunk["start_line"], "-", chunk["end_line"])
-        print("Code:\n", chunk["code"])
+        print("Metadata:", doc.metadata)
+        print("Content:\n", doc.page_content)
