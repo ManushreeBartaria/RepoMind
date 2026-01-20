@@ -46,3 +46,7 @@ coverage.xml
 *.egg-info/
 dist/
 build/
+# Vector databases
+db/
+chroma_db/
+*.chroma

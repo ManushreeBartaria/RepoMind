@@ -1,3 +1,4 @@
+from email.parser import Parser
 import os
 import json                     
 from typing import List        
@@ -10,7 +11,8 @@ import tree_sitter_javascript as tsjs
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 from langchain_core.documents import Document
-
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -339,6 +341,20 @@ def langchain_documents(chunks: List[dict], file_path: Path
             )
         )
     return docs
+
+def embeddings_and_vectorDB(docs: List[Document],persist_directory: str = "db/chroma_db"):
+    embedding_model = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2"
+    )
+    vector_store = Chroma.from_documents(
+        documents=docs,                    
+        embedding=embedding_model,
+        persist_directory=persist_directory,
+        collection_metadata={"hnsw:space": "cosine"}
+    )
+    vector_store.persist()             
+    return vector_store
+    
         
         
 if __name__ == "__main__":
@@ -359,11 +375,6 @@ if __name__ == "__main__":
     for file in js_files:
         chunks = js_ast_parser(file)
         all_chunks.extend(chunks)     
-    
-    print("Total chunks extracted:", len(all_chunks))
     documents = langchain_documents(all_chunks, Path(file_path))
-    print("Total LangChain documents created:", len(documents))
-    for doc in documents[:44]:
-        print("\n---")
-        print("Metadata:", doc.metadata)
-        print("Content:\n", doc.page_content)
+    vectorStore=embeddings_and_vectorDB(documents)
+    
