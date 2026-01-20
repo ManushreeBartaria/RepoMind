@@ -75,6 +75,7 @@ def ast_parser(file_path: Path):
             code=ast.get_source_segment(file_content, node)
             chunks.append({
                 "name": node.name,
+                "file_path": file_path,
                 "type": type(node).__name__,
                 "code":code,
                 "start_line": node.lineno,
@@ -83,6 +84,7 @@ def ast_parser(file_path: Path):
     if not chunks:
         chunks.append({
                 "name": file_path.stem,
+                "file_path": file_path,
                 "type": "Module",
                 "code": file_content,
                 "start_line": 1,
@@ -128,6 +130,7 @@ def java_ast_parser(file_path: Path):
             name = extract_direct_identifier(node)
             chunks.append({
                 "name": name,
+                "file_path": file_path,
                 "type": "Annotation",
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
@@ -138,6 +141,7 @@ def java_ast_parser(file_path: Path):
             name = extract_direct_identifier(node)
             chunks.append({
                 "name": name or file_path.stem,
+                "file_path": file_path,
                 "type": "Class",
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
@@ -147,6 +151,7 @@ def java_ast_parser(file_path: Path):
             name = extract_direct_identifier(node)
             chunks.append({
                 "name": name,
+                "file_path": file_path,
                 "type": "Method",
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
@@ -160,6 +165,7 @@ def java_ast_parser(file_path: Path):
     if not chunks:
         chunks.append({
             "name": file_path.stem,
+            "file_path": file_path,
             "type": "Module",
             "code": source,
             "start_line": 1,
@@ -198,6 +204,7 @@ def js_ast_parser(file_path: Path):
             name = extract_identifier(node)
             chunks.append({
                 "name": name,
+                "file_path": file_path,
                 "type": "Function",
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
@@ -209,6 +216,7 @@ def js_ast_parser(file_path: Path):
                 if child.type == "arrow_function":
                     chunks.append({
                         "name": name,
+                        "file_path": file_path,
                         "type": "ArrowFunction",
                         "code": "\n".join(source.splitlines()[start - 1:end]),
                         "start_line": start,
@@ -219,6 +227,7 @@ def js_ast_parser(file_path: Path):
             name = extract_identifier(node)
             chunks.append({
                 "name": name,
+                "file_path": file_path,
                 "type": "Class",
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
@@ -232,6 +241,7 @@ def js_ast_parser(file_path: Path):
     if not chunks:
         chunks.append({
             "name": file_path.stem,
+            "file_path": file_path,
             "type": "Module",
             "code": source,
             "start_line": 1,
@@ -300,6 +310,7 @@ def llm_chunking(chunks: List[dict]) -> List[dict]:
             for sem_chunk in semantic_chunks:
                 llm_chunks.append({
                     "name": chunk["name"],
+                    "file_path": chunk["file_path"],
                     "type": chunk["type"],
                     "code": sem_chunk["code"],
                     "start_line": chunk["start_line"],
@@ -319,7 +330,7 @@ def langchain_documents(chunks: List[dict], file_path: Path
             Document(
                 page_content=chunk["code"],
                 metadata={
-                    "file": str(file_path),
+                    "file": str(chunk["file_path"].relative_to(file_path)),
                     "title": chunk["name"],
                     "type": chunk["type"],
                     "start_line": chunk["start_line"],
