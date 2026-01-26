@@ -10,7 +10,7 @@ cloned_files/
 __pycache__/
 *.py[cod]
 *.pyo
-
+code_graph.pkl
 # IDE / Editor configs
 .vscode/
 .idea/
