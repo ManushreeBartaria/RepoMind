@@ -73,7 +73,6 @@ def send_to_llm(docs: List[Document], query: str) -> str:
             {query}
             """
     response = llm.invoke([HumanMessage(content=prompt)])
-    print(response)
     return response.content[0]["text"]
 
 def flow_text(result: str)-> str:
