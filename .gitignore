@@ -50,3 +50,5 @@ build/
 db/
 chroma_db/
 *.chroma
+flow.mmd
+flow.png

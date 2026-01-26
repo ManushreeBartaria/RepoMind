@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
+import subprocess
 load_dotenv()
 
 def user_query(query: str, vector_store_path: str = "db/chroma_db")-> List[Document]:
@@ -72,12 +73,43 @@ def send_to_llm(docs: List[Document], query: str) -> str:
             {query}
             """
     response = llm.invoke([HumanMessage(content=prompt)])
+    print(response)
+    return response.content[0]["text"]
+
+def flow_text(result: str)-> str:
+    prompt=f'''
+            You are a senior system architect.
+            Convert the following system explanation into a Mermaid FLOWCHART.
+            Rules:
+            - Output ONLY valid Mermaid flowchart syntax
+            - Use flowchart TD
+            - Use arrows (-->)
+            - Include function names
+            - Include API endpoints
+            - Do NOT add explanations
+            - Do NOT add markdown backticks
+
+            Explanation:
+            ----------------
+            {result}
+            ----------------
+
+    '''
+    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
+    response = llm.invoke([HumanMessage(content=prompt)])
     return response.content[0]["text"]
 
 
 if __name__ == "__main__":
-    sample_query = "Tell me about routes"
+    sample_query = "Tell me how backend works"
     retrieved_docs = user_query(sample_query)
     result = send_to_llm(retrieved_docs, sample_query)
-    print(result)
+    flow_output=flow_text(result)
+    with open("flow.mmd", "w") as f:
+        f.write(flow_output)
+    md_file=os.path.abspath("flow.mmd")
+    png_file=os.path.abspath("flow.png")    
+    subprocess.run([
+        r"C:\Program Files\nodejs\npx.cmd", "mmdc", "-i", md_file, "-o", png_file
+    ], check=True)
         
