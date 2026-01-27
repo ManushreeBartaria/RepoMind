@@ -20,71 +20,78 @@ def user_query(query: str, vector_store_path: str = "db/chroma_db")-> List[Docum
     results: List[Document] = vector_store.similarity_search(query, k=5)
     return results
 
-def reformulate_query_and_detect_intent(query: str) -> Dict[str, str]:
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-3-flash-preview",
-        temperature=0
-    )
-    prompt = ChatPromptTemplate.from_template(
-"""You are an expert query understanding and rewriting engine for a Retrieval-Augmented Generation (RAG) system focused on software architecture.
+
+
+import json
+
+def normalize_user_query(
+    user_query: str,
+    frontend_section: str
+) -> dict:
+    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+    system_prompt = f"""
+You are an intent normalization engine for a code intelligence system.
 
 Your task:
-1. Identify the PRIMARY intent of the user query.
-2. ALWAYS rewrite the query into a more explicit, system-level, and search-optimized form.
-3. Preserve the original meaning, but EXPAND vague queries into concrete technical requests.
+- DO NOT answer the user question.
+- DO NOT add new meaning.
+- DO NOT remove meaning.
+- DO NOT assume context not present in the query.
+- ONLY classify intent(s) and rewrite the SAME question
+  in intent-specific technical language.
 
-Intent classification rules:
-- Any query asking HOW a backend works, processes requests, handles logic, or manages data
-  → backend_execution_flow
-- Queries about UI behavior, frontend components, state, or rendering
-  → frontend_execution_flow
-- Queries asking about the complete system from frontend to backend
-  → fullstack_architecture_flow
-- Queries about APIs, endpoints, routes, HTTP methods, or payloads
-  → api_explanation
-- Queries about specific code, functions, classes, or errors
-  → code_explanation
-- Anything else
-  → general_question
+Primary intent is given by the frontend section.
+You may infer secondary intents if clearly implied.
 
-Rewriting rules (MANDATORY):
-- Convert generic questions into detailed, technical, system-level queries.
-- Include backend concepts such as controllers, services, database, request/response lifecycle when relevant.
-- The reformulated query MUST be different from the original query.
+Allowed intents:
+- explanation
+- impact_analysis
+- call_flow
 
-User Query:
-"{query}"
+Frontend-selected primary intent: {frontend_section}
 
-Return ONLY valid JSON in EXACTLY this format:
-{
-  "intent": "<intent>",
-  "reformulated_query": "<rewritten, explicit, technical query>"
-}
+Return ONLY valid JSON in the following format:
+
+{{
+  "primary_intent": "<one of allowed intents>",
+  "secondary_intents": ["<optional intents>"],
+  "queries": {{
+    "<intent>": "<reformulated query preserving meaning>"
+  }},
+  "entities": ["<symbols, functions, classes if mentioned>"],
+  "confidence": <float between 0 and 1>
+}}
 """
+
+    user_prompt = f"""
+User query:
+"{user_query}"
+"""
+
+    response = llm.invoke(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
     )
 
-    chain = prompt | llm
-
     try:
-        raw = chain.invoke({"query": query})
-        text = extract_text(raw.content)
-
-        import json
-        data = json.loads(text)
-
-        return {
-            "intent": data["intent"].strip().lower(),
-            "reformulated_query": data["reformulated_query"].strip()
+        parsed = json.loads(response.content)
+    except json.JSONDecodeError:
+        # Safe fallback — never crash the system
+        parsed = {
+            "primary_intent": frontend_section,
+            "secondary_intents": [],
+            "queries": {
+                frontend_section: user_query
+            },
+            "entities": [],
+            "confidence": 0.5
         }
 
-    except Exception as e:
-        print("INTENT PARSING FAILED:", e)
-        print("RAW MODEL OUTPUT:", text if 'text' in locals() else None)
+    return parsed
 
-        return {
-            "intent": "general_question",
-            "reformulated_query": query
-        }
+
 
 def extract_text(content) -> str:
     if isinstance(content, str):
