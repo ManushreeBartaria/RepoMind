@@ -17,95 +17,112 @@ from RepoMind.retrieval.feature2 import (
     impact_mermaid
 )
 
+from RepoMind.retrieval.feature3 import (
+    extract_call_chain,
+    fetch_chunks_by_id as fetch_chunks_call,
+    send_to_llm_call_flow,
+    call_flow_mermaid
+)
 
-def run_explanation_feature(refined_query, graph):
-    entry_nodes = semantic_entry_discovery(
-        refined_query["concept_entities"],
-        refined_query["queries"]["explanation"],
+
+def run_explanation_feature(refined, graph):
+    entry = semantic_entry_discovery(
+        refined["concept_entities"],
+        refined["queries"]["explanation"],
+        graph
+    )
+    nodes = extract_flow_subgraph(graph, entry)
+    docs = fetch_chunks_by_id(nodes)
+    return run_explanation(docs, refined["queries"]["explanation"])
+
+
+def run_impact_feature(refined, graph):
+    entry = semantic_entry_discovery(
+        refined["concept_entities"],
+        refined["queries"]["impact_analysis"],
         graph
     )
 
-    flow_nodes = extract_flow_subgraph(graph, entry_nodes)
-    docs = fetch_chunks_by_id(flow_nodes)
+    impact = extract_impact_subgraph(graph, entry)
+    docs = fetch_chunks_impact(
+        impact["start_nodes"] + impact["impacted_nodes"]
+    )
 
-    return run_explanation(
+    text = send_to_llm_impact(
         docs,
-        refined_query["queries"]["explanation"]
+        refined["queries"]["impact_analysis"],
+        impact
     )
 
-
-def run_impact_feature(refined_query, graph):
-    entry_nodes = semantic_entry_discovery(
-        refined_query["concept_entities"],
-        refined_query["queries"]["impact_analysis"],
-        graph
-    )
-
-    impact_data = extract_impact_subgraph(graph, entry_nodes)
-
-    all_nodes = (
-        impact_data["start_nodes"] +
-        impact_data["impacted_nodes"]
-    )
-
-    docs = fetch_chunks_impact(all_nodes)
-
-    text_result = send_to_llm_impact(
-        docs,
-        refined_query["queries"]["impact_analysis"],
-        impact_data
-    )
-
-    diagram_files = impact_mermaid(impact_data)
+    diagram = impact_mermaid(impact)
 
     last_safe = None
-    first_failure = None
-    if impact_data["failure_points"]:
-        last_safe = impact_data["failure_points"][0]["safe_until"]
-        first_failure = impact_data["failure_points"][0]["fails_at"]
+    first_fail = None
+    if impact["failure_points"]:
+        last_safe = impact["failure_points"][0]["safe_until"]
+        first_fail = impact["failure_points"][0]["fails_at"]
 
     return {
-        "text": text_result,
+        "text": text,
         "last_safe_point": last_safe,
-        "first_failure_point": first_failure,
-        "impact_diagram": diagram_files["svg_path"]
+        "first_failure_point": first_fail,
+        "impact_diagram": diagram
+    }
+
+
+def run_call_flow_feature(refined, graph):
+    entry = semantic_entry_discovery(
+        refined["concept_entities"],
+        refined["queries"]["call_flow"],
+        graph
+    )
+
+    call_chain = extract_call_chain(graph, entry)
+    docs = fetch_chunks_call(call_chain)
+
+    text = send_to_llm_call_flow(
+        docs,
+        refined["queries"]["call_flow"]
+    )
+
+    diagram = call_flow_mermaid(call_chain)
+
+    return {
+        "call_sequence": text,
+        "call_flow_diagram": diagram
     }
 
 
 def run(user_query: str, frontend_section: str):
-    refined_query = normalize_user_query(user_query, frontend_section)
+    refined = normalize_user_query(user_query, frontend_section)
 
     with open("code_graph.pkl", "rb") as f:
         graph = pickle.load(f)
 
     responses = {}
-    primary_intent = refined_query["primary_intent"]
+    primary = refined["primary_intent"]
 
-    if primary_intent == "explanation":
-        responses["explanation"] = run_explanation_feature(
-            refined_query, graph
-        )
+    if primary == "explanation":
+        responses["explanation"] = run_explanation_feature(refined, graph)
 
-    elif primary_intent == "impact_analysis":
-        responses["impact_analysis"] = run_impact_feature(
-            refined_query, graph
-        )
+    elif primary == "impact_analysis":
+        responses["impact_analysis"] = run_impact_feature(refined, graph)
 
-    secondary_intents = refined_query.get("secondary_intents", [])
-    for intent in secondary_intents:
-        if intent == "call_flow":
-            responses["call_flow"] = run_explanation_feature(
-                refined_query, graph
-            )
+    elif primary == "call_flow":
+        responses["call_flow"] = run_call_flow_feature(refined, graph)
+
+    for intent in refined.get("secondary_intents", []):
+        if intent == "call_flow" and "call_flow" not in responses:
+            responses["call_flow"] = run_call_flow_feature(refined, graph)
 
     return {
-        "intent": refined_query["primary_intent"],
-        "confidence": refined_query["confidence"],
+        "intent": refined["primary_intent"],
+        "confidence": refined["confidence"],
         "responses": responses
     }
 
 
 if __name__ == "__main__":
-    user_query = "If I change login_user logic, what will break?"
-    result = run(user_query, "impact_analysis")
+    query = "Show me the call flow for authentication"
+    result = run(query, "call_flow")
     print(result)
