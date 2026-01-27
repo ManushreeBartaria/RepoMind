@@ -17,7 +17,7 @@ def user_query(query: str, vector_store_path: str = "db/chroma_db")-> List[Docum
         persist_directory=vector_store_path,
         embedding_function=embedding_model
     )
-    results: List[Document] = vector_store.similarity_search(query, k=5)
+    results: List[Document] = vector_store.similarity_search(query, k=10)
     return results
 
 def reformulate_query_and_detect_intent(query: str) -> Dict[str, str]:
@@ -96,13 +96,13 @@ def extract_text(content) -> str:
 
 if __name__ == "__main__":
     sample_query = "Tell me how backend works"
-    meta = reformulate_query_and_detect_intent(sample_query)
-    intent = meta["intent"]
-    refined_query = meta["reformulated_query"]
-    print("Intent:", intent)
-    print("Rewritten Query:", refined_query)
-    retrieved_docs = user_query(refined_query)
-    result = send_to_llm(retrieved_docs, refined_query)
+    # refined_query = reformulate_query_and_detect_intent(sample_query)
+    # intent = refined_query["primary_intent"]
+    # refined_query = refined_query["reformulated_query"]
+    # print("Intent:", intent)
+    # print("Rewritten Query:", refined_query)
+    retrieved_docs = user_query(sample_query)
+    result = send_to_llm(retrieved_docs, sample_query)
     flow_output=flow_text(result)
     with open("flow.mmd", "w") as f:
         f.write(flow_output)
