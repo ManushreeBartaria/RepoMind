@@ -1,104 +1,89 @@
 import os
 import subprocess
+from typing import List, Dict
 import networkx as nx
-from typing import List
-from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 
 
-def extract_call_chain(graph: nx.DiGraph, entry_nodes: List[str], max_depth=4) -> List[str]:
-    visited = set()
-    ordered = []
+# =========================================================
+# Feature 3 — Structure Graph Builder (NO LLM)
+# =========================================================
 
-    def dfs(node, depth):
-        if node in visited or depth > max_depth:
-            return
-        visited.add(node)
-        ordered.append(node)
-        for succ in graph.successors(node):
-            dfs(succ, depth + 1)
+def run_feature3(
+    graph: nx.DiGraph,
+    nodes: List[str],
+    output_dir: str = "artifacts",
+    filename: str = "feature_structure"
+) -> Dict:
+    """
+    Generates a STRUCTURAL GRAPH (Mermaid + SVG) for the given nodes.
 
-    for entry in entry_nodes:
-        dfs(entry, 0)
+    - Uses ONLY graph topology
+    - NO LLM calls
+    - NO caching
+    - Graph reflects the SAME nodes used in explanation / impact
+    """
 
-    return ordered
+    if not nodes:
+        return {}
 
-
-def fetch_chunks_by_id(chunk_ids: List[str]) -> List[Document]:
-    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vectorstore = Chroma(
-        persist_directory="RepoMind/db/chroma_db",
-        embedding_function=embedding_model
-    )
-
-    if not chunk_ids:
-        return []
-
-    results = vectorstore.get(
-        where={"chunk_id": {"$in": chunk_ids}}
-    )
-
-    docs = []
-    for content, metadata in zip(results["documents"], results["metadatas"]):
-        docs.append(Document(page_content=content, metadata=metadata))
-
-    return docs
-
-
-def send_to_llm_call_flow(docs: List[Document], query: str) -> str:
-    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0)
-
-    context = "\n\n".join(doc.page_content for doc in docs)
-
-    prompt = f"""
-You are a software execution tracing engine.
-
-Using ONLY the context below, list the EXACT call sequence
-that occurs during execution.
-
-Rules:
-- Output a numbered list
-- Each step must be a function or method name
-- Follow actual execution order
-- Do NOT explain WHY
-- Do NOT summarize
-- Do NOT invent calls
-
-Context:
-----------------
-{context}
-----------------
-
-Now answer the following question:
-{query}
-"""
-
-    response = llm.invoke([HumanMessage(content=prompt)])
-    return response.content[0]["text"]
-
-
-def call_flow_mermaid(call_chain: List[str], output_dir="artifacts"):
     os.makedirs(output_dir, exist_ok=True)
 
-    mmd_path = os.path.join(output_dir, "feature3_call_flow.mmd")
-    svg_path = os.path.join(output_dir, "feature3_call_flow.svg")
+    mmd_path = os.path.join(output_dir, f"{filename}.mmd")
+    svg_path = os.path.join(output_dir, f"{filename}.svg")
 
     lines = ["flowchart TD"]
+    node_ids = {}
 
-    for i in range(len(call_chain) - 1):
-        lines.append(f'{call_chain[i]} --> {call_chain[i+1]}')
+    def safe(node_id: str) -> str:
+        return node_id.replace("\\", "_").replace("/", "_").replace("::", "_")
 
-    mermaid_code = "\n".join(lines)
+    # -------------------------------------------------
+    # Node rendering
+    # -------------------------------------------------
+    for node in nodes:
+        if not graph.has_node(node):
+            continue
 
+        data = graph.nodes[node]
+
+        func = node.split("::")[-1]
+        file = data.get("file", "unknown")
+        params = data.get("params", [])
+        ntype = data.get("type", "unknown")
+
+        params_str = ", ".join(params) if params else "—"
+        nid = safe(node)
+        node_ids[node] = nid
+
+        label = (
+            f"<b>{func}</b><br/>"
+            f"<small>({params_str})</small><br/>"
+            f"<small>{file}</small><br/>"
+            f"<small>[{ntype}]</small>"
+        )
+
+        lines.append(f'{nid}["{label}"]')
+
+    # -------------------------------------------------
+    # Edge rendering (ONLY between included nodes)
+    # -------------------------------------------------
+    for src in nodes:
+        for dst in graph.successors(src):
+            if src in node_ids and dst in node_ids:
+                lines.append(f"{node_ids[src]} --> {node_ids[dst]}")
+
+    # -------------------------------------------------
+    # Write Mermaid
+    # -------------------------------------------------
     with open(mmd_path, "w", encoding="utf-8") as f:
-        f.write(mermaid_code)
+        f.write("\n".join(lines))
 
+    # -------------------------------------------------
+    # Render SVG
+    # -------------------------------------------------
     subprocess.run(
         [
-            r"C:\\Program Files\\nodejs\\npx.cmd",
+            r"C:\Program Files\nodejs\npx.cmd",
             "mmdc",
             "-i",
             mmd_path,
@@ -108,4 +93,8 @@ def call_flow_mermaid(call_chain: List[str], output_dir="artifacts"):
         check=True
     )
 
-    return svg_path
+    return {
+        "mmd_path": mmd_path,
+        "svg_path": svg_path,
+        "total_nodes": len(node_ids)
+    }

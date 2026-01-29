@@ -59,6 +59,7 @@ def js_ast_parser(file_path: Path):
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
                 "end_line": end,
+                "decorators": [],  # JavaScript typically uses decorators via @ syntax in TypeScript
             })
         for child in node.children:
             walk(child)
@@ -140,6 +141,7 @@ def llm_chunking(chunks: List[dict]) -> List[dict]:
                     "code": sem_chunk["code"],
                     "start_line": chunk["start_line"],
                     "end_line": chunk["end_line"],
+                    "decorators": chunk.get("decorators", []),
                 })
         except Exception:
             print(f"LLM chunking failed for chunk: {chunk['name']}")

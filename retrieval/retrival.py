@@ -1,28 +1,59 @@
 import json
-import pickle
-from typing import List
+from typing import List, Dict
+from functools import lru_cache
 from dotenv import load_dotenv
 
 import networkx as nx
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_core.documents import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
 
+# =========================================================
+# Shared / cached resources
+# =========================================================
+
+@lru_cache(maxsize=1)
+def get_embedding_model():
+    return HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2"
+    )
+
+
+@lru_cache(maxsize=1)
+def get_vectorstore():
+    return Chroma(
+        persist_directory="RepoMind/db/chroma_db",
+        embedding_function=get_embedding_model()
+    )
+
+
+@lru_cache(maxsize=1)
+def get_llm():
+    return ChatGoogleGenerativeAI(
+        model="gemini-3-flash-preview",
+        temperature=0
+    )
+
+
+# =========================================================
+# Semantic entry-point discovery
+# =========================================================
 def semantic_entry_discovery(
     concept_entities: List[str],
     explanation_query: str,
-    graph
+    graph: nx.DiGraph,
+    top_k: int = 3
 ) -> List[str]:
-    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    """
+    Finds the most relevant entry nodes in the code graph
+    using semantic similarity + graph centrality.
+    """
 
-    vectorstore = Chroma(
-        persist_directory="RepoMind/db/chroma_db",
-        embedding_function=embedding_model
-    )
+    vectorstore = get_vectorstore()
 
     candidate_docs: List[Document] = vectorstore.similarity_search(
         explanation_query,
@@ -31,65 +62,76 @@ def semantic_entry_discovery(
 
     candidate_nodes = []
     for doc in candidate_docs:
-        chunk_id = doc.metadata.get("chunk_id")
-        if chunk_id and graph.has_node(chunk_id):
-            candidate_nodes.append(chunk_id)
+        cid = doc.metadata.get("chunk_id")
+        if cid and graph.has_node(cid):
+            candidate_nodes.append(cid)
 
-    scored_nodes = []
-    for node in candidate_nodes:
+    if not candidate_nodes:
+        return []
+
+    scored = []
+    for node in set(candidate_nodes):
         out_degree = graph.out_degree(node)
         in_degree = graph.in_degree(node)
         reachable = len(nx.descendants(graph, node))
+
         score = (out_degree * 2) + reachable - in_degree
-        scored_nodes.append((node, score))
+        scored.append((node, score))
 
-    if not scored_nodes:
-        return []
+    scored.sort(key=lambda x: x[1], reverse=True)
 
-    scored_nodes.sort(key=lambda x: x[1], reverse=True)
-    return [scored_nodes[0][0]]
+    return [n for n, _ in scored[:top_k]]
 
 
-def normalize_user_query(user_query: str, frontend_section: str) -> dict:
-    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+# =========================================================
+# User query normalization
+# =========================================================
+def normalize_user_query(
+    user_query: str,
+    frontend_section: str
+) -> Dict:
+    """
+    Normalizes raw user query into intent-aware technical queries.
+    DOES NOT answer the question.
+    """
+
+    llm = get_llm()
 
     system_prompt = f"""
-    You are an intent normalization engine for a code intelligence system.
+You are an intent normalization engine for a code intelligence system.
 
-    Your task:
-    - DO NOT answer the user question.
-    - DO NOT add new meaning.
-    - DO NOT remove meaning.
-    - DO NOT assume context not present in the query.
-    - ONLY classify intent(s) and rewrite the SAME question
-      in intent-specific technical language.
+Rules:
+- DO NOT answer the question
+- DO NOT add or remove meaning
+- DO NOT assume missing context
+- ONLY classify intent and rewrite the SAME question
 
-    Primary intent is given by the frontend section.
-    You may infer secondary intents if clearly implied.
+Allowed intents:
+- explanation
+- impact_analysis
+- call_flow
 
-    Allowed intents:
-    - explanation
-    - impact_analysis
-    - call_flow
+Frontend-selected intent: {frontend_section}
 
-    Frontend-selected primary intent: {frontend_section}
+Entity rules:
+- Mentioned functions/classes → symbol_entities
+- High-level concepts → concept_entities
+- Do NOT invent entities
 
-    Entity extraction rules:
-    - If the query mentions a specific function, class, or symbol, list it under "symbol_entities".
-    - If the query refers to a high-level concept, list it under "concept_entities".
-    - Do NOT invent entities.
+Return ONLY valid JSON:
 
-    Return ONLY valid JSON in the following format:
-    {{
-      "primary_intent": "...",
-      "secondary_intents": [],
-      "queries": {{}},
-      "symbol_entities": [],
-      "concept_entities": [],
-      "needs_semantic_discovery": true,
-      "confidence": 0.0
-    }}
-    """
+{{
+  "primary_intent": "<intent>",
+  "secondary_intents": [],
+  "queries": {{
+    "<intent>": "<rephrased question>"
+  }},
+  "symbol_entities": [],
+  "concept_entities": [],
+  "needs_semantic_discovery": true,
+  "confidence": 0.0
+}}
+"""
 
     response = llm.invoke(
         [
@@ -99,14 +141,25 @@ def normalize_user_query(user_query: str, frontend_section: str) -> dict:
     )
 
     try:
-        return json.loads(response.content[0]["text"])
+        parsed = json.loads(response.content[0]["text"])
+
+        if "queries" not in parsed:
+            parsed["queries"] = {
+                parsed["primary_intent"]: user_query
+            }
+
+        return parsed
+
     except Exception:
+        # Safe fallback (NO extra LLM calls)
         return {
             "primary_intent": frontend_section,
             "secondary_intents": [],
-            "queries": {frontend_section: user_query},
+            "queries": {
+                frontend_section: user_query
+            },
             "symbol_entities": [],
             "concept_entities": [],
             "needs_semantic_discovery": False,
-            "confidence": 0.5,
+            "confidence": 0.5
         }

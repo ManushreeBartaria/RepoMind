@@ -35,6 +35,14 @@ def ast_parser(file_path: Path):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             code = ast.get_source_segment(file_content, node)
+            
+            # Extract decorators for bridge inference
+            decorators = []
+            if hasattr(node, "decorator_list"):
+                for decorator in node.decorator_list:
+                    deco_str = ast.unparse(decorator) if hasattr(ast, "unparse") else str(decorator)
+                    decorators.append(deco_str)
+            
             chunks.append({
                 "name": node.name,
                 "file_path": file_path,
@@ -42,6 +50,7 @@ def ast_parser(file_path: Path):
                 "code": code,
                 "start_line": node.lineno,
                 "end_line": node.end_lineno,
+                "decorators": decorators,
             })
     if not chunks:
         chunks.append({
