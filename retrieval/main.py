@@ -1,98 +1,100 @@
 import pickle
+
 from RepoMind.retrieval.retrival import (
     normalize_user_query,
     semantic_entry_discovery
 )
 
-from RepoMind.retrieval.feature1 import (
-    extract_flow_subgraph,
-    fetch_chunks_by_id,
-    send_to_llm as run_explanation
-)
+# -------- Feature 1 (Explanation) --------
+from RepoMind.retrieval.feature1 import run_feature1
 
-from RepoMind.retrieval.feature2 import (
-    extract_impact_subgraph,
-    fetch_chunks_by_id as fetch_chunks_impact,
-    send_to_llm_impact,
-    impact_mermaid
-)
+# -------- Feature 2 (Impact Analysis) --------
+from RepoMind.retrieval.feature2 import run_feature2
 
-from RepoMind.retrieval.feature3 import (
-    extract_call_chain,
-    fetch_chunks_by_id as fetch_chunks_call,
-    send_to_llm_call_flow,
-    call_flow_mermaid
-)
+# -------- Feature 3 (Visualization / Structure) --------
+from RepoMind.retrieval.feature3 import run_feature3
 
 
+# =========================================================
+# Feature 1 Router
+# =========================================================
 def run_explanation_feature(refined, graph):
-    entry = semantic_entry_discovery(
+    entry_nodes = semantic_entry_discovery(
         refined["concept_entities"],
         refined["queries"]["explanation"],
         graph
     )
-    nodes = extract_flow_subgraph(graph, entry)
-    docs = fetch_chunks_by_id(nodes)
-    return run_explanation(docs, refined["queries"]["explanation"])
 
-
-def run_impact_feature(refined, graph):
-    entry = semantic_entry_discovery(
-        refined["concept_entities"],
-        refined["queries"]["impact_analysis"],
-        graph
+    # Feature 1 returns (explanation, svg_path)
+    explanation, flow_nodes = run_feature1(
+        graph=graph,
+        entry_nodes=entry_nodes,
+        query=refined["queries"]["explanation"]
     )
-
-    impact = extract_impact_subgraph(graph, entry)
-    docs = fetch_chunks_impact(
-        impact["start_nodes"] + impact["impacted_nodes"]
+    
+    structure = run_feature3(
+        graph=graph,
+        nodes=flow_nodes,
+        output_dir="artifacts",
+        filename="feature1_structure"
     )
-
-    text = send_to_llm_impact(
-        docs,
-        refined["queries"]["impact_analysis"],
-        impact
-    )
-
-    diagram = impact_mermaid(impact)
-
-    last_safe = None
-    first_fail = None
-    if impact["failure_points"]:
-        last_safe = impact["failure_points"][0]["safe_until"]
-        first_fail = impact["failure_points"][0]["fails_at"]
 
     return {
-        "text": text,
-        "last_safe_point": last_safe,
-        "first_failure_point": first_fail,
-        "impact_diagram": diagram
+        "text": explanation,
+        "structure": structure
     }
 
 
-def run_call_flow_feature(refined, graph):
-    entry = semantic_entry_discovery(
+# =========================================================
+# Feature 2 Router
+# =========================================================
+def run_impact_feature(refined, graph):
+    entry_nodes = semantic_entry_discovery(
+        refined["concept_entities"],
+        refined["queries"]["impact_analysis"],
+        graph
+    )[:1]
+    impact_result = run_feature2(
+        graph=graph,
+        changed_nodes=entry_nodes,
+        query=refined["queries"]["impact_analysis"]
+    )
+
+    structure = run_feature3(
+        graph=graph,
+        nodes=impact_result[2],
+        output_dir="artifacts",
+        filename="feature2_structure"
+    )
+
+    return {
+        "text": impact_result[0],
+        "impact_data": impact_result[1],
+        "structure": structure
+    }
+
+
+# =========================================================
+# Feature 3 Router (Standalone)
+# =========================================================
+def run_structure_feature(refined, graph):
+    entry_nodes = semantic_entry_discovery(
         refined["concept_entities"],
         refined["queries"]["call_flow"],
         graph
     )
 
-    call_chain = extract_call_chain(graph, entry)
-    docs = fetch_chunks_call(call_chain)
-
-    text = send_to_llm_call_flow(
-        docs,
-        refined["queries"]["call_flow"]
+    return run_feature3(
+        graph=graph,
+        nodes=entry_nodes,
+        output_dir="artifacts",
+        filename="feature3_structure"
     )
 
-    diagram = call_flow_mermaid(call_chain)
 
-    return {
-        "call_sequence": text,
-        "call_flow_diagram": diagram
-    }
-
-
+# =========================================================
+# Main Router
+# =========================================================
 def run(user_query: str, frontend_section: str):
     refined = normalize_user_query(user_query, frontend_section)
 
@@ -109,11 +111,7 @@ def run(user_query: str, frontend_section: str):
         responses["impact_analysis"] = run_impact_feature(refined, graph)
 
     elif primary == "call_flow":
-        responses["call_flow"] = run_call_flow_feature(refined, graph)
-
-    for intent in refined.get("secondary_intents", []):
-        if intent == "call_flow" and "call_flow" not in responses:
-            responses["call_flow"] = run_call_flow_feature(refined, graph)
+        responses["system_structure"] = run_structure_feature(refined, graph)
 
     return {
         "intent": refined["primary_intent"],
@@ -122,7 +120,15 @@ def run(user_query: str, frontend_section: str):
     }
 
 
+# =========================================================
+# Local Test
+# =========================================================
 if __name__ == "__main__":
-    query = "Show me the call flow for authentication"
-    result = run(query, "call_flow")
-    print(result)
+    # q1 = "Explain how authentication works end to end"
+    # print(run(q1, "explanation"))
+
+    # q2 = "If I change login API what breaks"
+    # print(run(q2, "impact_analysis"))
+
+    q3 = "Show system structure of authentication"
+    print(run(q3, "call_flow"))

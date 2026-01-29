@@ -52,6 +52,13 @@ def java_ast_parser(file_path: Path):
             start = node.start_point[0] + 1
             end = node.end_point[0] + 1
             name = extract_direct_identifier(node) or file_path.stem
+            
+            # Extract decorators/annotations for bridge inference
+            decorators = []
+            for child in node.children:
+                if child.type in ("annotation", "marker_annotation"):
+                    decorators.append(child.text.decode("utf-8"))
+            
             chunks.append({
                 "name": name,
                 "file_path": file_path,
@@ -59,6 +66,7 @@ def java_ast_parser(file_path: Path):
                 "code": "\n".join(source.splitlines()[start - 1:end]),
                 "start_line": start,
                 "end_line": end,
+                "decorators": decorators,
             })
         for child in node.children:
             walk(child)

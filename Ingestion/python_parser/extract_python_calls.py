@@ -1,8 +1,31 @@
 import ast
 from pathlib import Path
 
-def extract_python_calls(chunks,tree,file_name):
-    relations=[]
+def extract_python_calls(chunks, tree, file_name):
+    relations = []
+    
+    # Create a mapping of chunk names to chunks for easy access
+    chunk_map = {}
+    for chunk in chunks:
+        chunk_map[chunk["name"]] = chunk
+
+    def extract_params(func_node):
+        params = []
+
+        for arg in func_node.args.args:
+            params.append(arg.arg)
+
+        if func_node.args.vararg:
+            params.append(f"*{func_node.args.vararg.arg}")
+
+        for arg in func_node.args.kwonlyargs:
+            params.append(arg.arg)
+
+        if func_node.args.kwarg:
+            params.append(f"**{func_node.args.kwarg.arg}")
+
+        return params
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -45,7 +68,18 @@ def extract_python_calls(chunks,tree,file_name):
                     "confidence": "syntactic"
                 })
 
-   
+            for body_item in node.body:
+                if isinstance(body_item, ast.FunctionDef) and body_item.name == "__init__":
+                    params = extract_params(body_item)
+                    for p in params:
+                        relations.append({
+                            "from": node.name,
+                            "to": p,
+                            "type": "parameter",
+                            "language": "python",
+                            "confidence": "explicit"
+                        })
+
     for node in ast.walk(tree):
         if not hasattr(node, "lineno"):
             continue
@@ -53,7 +87,9 @@ def extract_python_calls(chunks,tree,file_name):
         for chunk in chunks:
             if not (chunk["start_line"] <= node.lineno <= chunk["end_line"]):
                 continue
+
             caller = chunk["name"]
+
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     callee = node.func.id
@@ -70,15 +106,16 @@ def extract_python_calls(chunks,tree,file_name):
                     "line": node.lineno,
                     "confidence": "syntactic"
                 })
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                relations.append({
-                    "from": caller,
-                    "to": node.func.id,
-                    "type": "instantiates",
-                    "language": "python",
-                    "line": node.lineno,
-                    "confidence": "heuristic"
-                })
+
+                if isinstance(node.func, ast.Name):
+                    relations.append({
+                        "from": caller,
+                        "to": node.func.id,
+                        "type": "instantiates",
+                        "language": "python",
+                        "line": node.lineno,
+                        "confidence": "heuristic"
+                    })
 
             if isinstance(node, ast.Return):
                 relations.append({
@@ -90,9 +127,25 @@ def extract_python_calls(chunks,tree,file_name):
                     "confidence": "explicit"
                 })
 
-    
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params = extract_params(node)
+            
+            # Add parameters to the chunk metadata
+            if node.name in chunk_map:
+                if "params" not in chunk_map[node.name]:
+                    chunk_map[node.name]["params"] = []
+                chunk_map[node.name]["params"].extend(params)
+            
+            for p in params:
+                relations.append({
+                    "from": node.name,
+                    "to": p,
+                    "type": "parameter",
+                    "language": "python",
+                    "confidence": "explicit"
+                })
+
             for decorator in node.decorator_list:
                 if isinstance(decorator, ast.Name):
                     deco = decorator.id
@@ -110,5 +163,3 @@ def extract_python_calls(chunks,tree,file_name):
                 })
 
     return relations
-
-    
