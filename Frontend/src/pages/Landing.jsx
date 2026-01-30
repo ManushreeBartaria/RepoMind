@@ -1,22 +1,22 @@
 import { Github, Network, MessageSquare, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { apiService } from "../services/api";
 
 export default function Landing() {
   const navigate = useNavigate();
 
-  // ✅ NEW STATES (logic only, UI unchanged)
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // ✅ GitHub repo validation
   function isValidGithubRepo(url) {
     const pattern =
       /^(https?:\/\/)?(www\.)?github\.com\/[^\/\s]+\/[^\/\s]+$/;
     return pattern.test(url.trim());
   }
 
-  function handleAnalyze() {
+  async function handleAnalyze() {
     if (!repoUrl.trim()) {
       setError("Please enter a GitHub repository URL");
       return;
@@ -27,9 +27,25 @@ export default function Landing() {
       return;
     }
 
-    // ✅ valid → go to workspace
+    setLoading(true);
     setError("");
-    navigate("/workspace", { state: { repoUrl } });
+
+    try {
+      // ✅ NEW: start ingestion job
+      const response = await apiService.ingestRepo(repoUrl);
+
+      navigate("/workspace", {
+        state: {
+          repoUrl,
+          repoId: response.repo_id,
+          fileTree: response.file_tree,
+        },
+      });
+    } catch (err) {
+      setError(err.message || "Failed to analyze repository");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -42,7 +58,6 @@ export default function Landing() {
         flexDirection: "column",
       }}
     >
-      {/* HEADER */}
       <header
         style={{
           borderBottom: "1px solid #1e293b",
@@ -52,12 +67,9 @@ export default function Landing() {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 18, fontWeight: 600 }}>
-          🐙 RepoMind
-        </span>
+        <span style={{ fontSize: 18, fontWeight: 600 }}>🐙 RepoMind</span>
       </header>
 
-      {/* HERO */}
       <main
         style={{
           maxWidth: 1100,
@@ -79,7 +91,6 @@ export default function Landing() {
             padding: "40px 0",
           }}
         >
-          {/* BADGE */}
           <div
             style={{
               display: "inline-flex",
@@ -97,7 +108,6 @@ export default function Landing() {
             ✨ AI-Powered Repository Analysis
           </div>
 
-          {/* TITLE */}
           <h1
             style={{
               fontSize: 50,
@@ -111,7 +121,6 @@ export default function Landing() {
             <span style={{ color: "#3b82f6" }}>In Seconds</span>
           </h1>
 
-          {/* SUBTITLE */}
           <p
             style={{
               maxWidth: 720,
@@ -122,10 +131,8 @@ export default function Landing() {
           >
             RepoMind uses AI to analyze GitHub repositories, visualize file
             structures, and answer your questions about the code.
-            Just paste a link and start exploring.
           </p>
 
-          {/* INPUT + BUTTON */}
           <div
             style={{
               display: "flex",
@@ -155,6 +162,7 @@ export default function Landing() {
 
             <button
               onClick={handleAnalyze}
+              disabled={loading}
               style={{
                 padding: "14px 28px",
                 borderRadius: 8,
@@ -162,17 +170,17 @@ export default function Landing() {
                 background: "#2563eb",
                 color: "#fff",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                opacity: loading ? 0.7 : 1,
               }}
             >
               Analyze <ArrowRight size={18} />
             </button>
           </div>
 
-          {/* ERROR MESSAGE */}
           {error && (
             <div style={{ color: "#ef4444", fontSize: 14, marginBottom: 16 }}>
               {error}
@@ -183,7 +191,6 @@ export default function Landing() {
             Works with any public GitHub repository
           </p>
 
-          {/* FEATURES — SAME AS BEFORE */}
           <div
             style={{
               display: "grid",
@@ -191,26 +198,13 @@ export default function Landing() {
               gap: 24,
             }}
           >
-            <Feature
-              icon={<Github size={28} />}
-              title="Paste GitHub Link"
-              desc="Simply paste any public GitHub repository URL to get started"
-            />
-            <Feature
-              icon={<Network size={28} />}
-              title="Visualize Structure"
-              desc="See the complete file tree and understand how files connect"
-            />
-            <Feature
-              icon={<MessageSquare size={28} />}
-              title="Ask Questions"
-              desc="Chat with AI to understand any part of the codebase"
-            />
+            <Feature icon={<Github size={28} />} title="Paste GitHub Link" desc="Paste any public repository" />
+            <Feature icon={<Network size={28} />} title="Visualize Structure" desc="Understand code connections" />
+            <Feature icon={<MessageSquare size={28} />} title="Ask Questions" desc="Chat with AI about code" />
           </div>
         </div>
       </main>
 
-      {/* FOOTER */}
       <footer
         style={{
           borderTop: "1px solid #1e293b",
@@ -218,7 +212,6 @@ export default function Landing() {
           textAlign: "center",
           fontSize: 14,
           color: "#64748b",
-          flexShrink: 0,
         }}
       >
         RepoMind — AI-powered repository analysis
