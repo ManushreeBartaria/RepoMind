@@ -1,37 +1,38 @@
-import pickle
+from typing import Dict, Any
+import networkx as nx
+from pathlib import Path
 
-from RepoMind.retrieval.retrival import (
+from retrieval.retrival import (
     normalize_user_query,
     semantic_entry_discovery
 )
 
 # -------- Feature 1 (Explanation) --------
-from RepoMind.retrieval.feature1 import run_feature1
+from retrieval.feature1 import run_feature1
 
 # -------- Feature 2 (Impact Analysis) --------
-from RepoMind.retrieval.feature2 import run_feature2
+from retrieval.feature2 import run_feature2
 
 # -------- Feature 3 (Visualization / Structure) --------
-from RepoMind.retrieval.feature3 import run_feature3
+from retrieval.feature3 import run_feature3
 
 
 # =========================================================
 # Feature 1 Router
 # =========================================================
-def run_explanation_feature(refined, graph):
+def run_explanation_feature(refined: Dict, graph: nx.DiGraph):
     entry_nodes = semantic_entry_discovery(
         refined["concept_entities"],
         refined["queries"]["explanation"],
         graph
     )
 
-    # Feature 1 returns (explanation, svg_path)
     explanation, flow_nodes = run_feature1(
         graph=graph,
         entry_nodes=entry_nodes,
         query=refined["queries"]["explanation"]
     )
-    
+
     structure = run_feature3(
         graph=graph,
         nodes=flow_nodes,
@@ -39,22 +40,27 @@ def run_explanation_feature(refined, graph):
         filename="feature1_structure"
     )
 
+    svg_path = structure.get("svg_path")
+    image_url = f"/artifacts/{Path(svg_path).name}"
+
     return {
         "text": explanation,
-        "structure": structure
+        "structure": structure,
+        "image_url": image_url
     }
 
 
 # =========================================================
 # Feature 2 Router
 # =========================================================
-def run_impact_feature(refined, graph):
+def run_impact_feature(refined: Dict, graph: nx.DiGraph):
     entry_nodes = semantic_entry_discovery(
         refined["concept_entities"],
         refined["queries"]["impact_analysis"],
         graph
     )[:1]
-    impact_result = run_feature2(
+
+    explanation, impact_data, involved_nodes = run_feature2(
         graph=graph,
         changed_nodes=entry_nodes,
         query=refined["queries"]["impact_analysis"]
@@ -62,73 +68,119 @@ def run_impact_feature(refined, graph):
 
     structure = run_feature3(
         graph=graph,
-        nodes=impact_result[2],
+        nodes=involved_nodes,
         output_dir="artifacts",
         filename="feature2_structure"
     )
 
+    svg_path = structure.get("svg_path")
+    image_url = f"/artifacts/{Path(svg_path).name}"
+
     return {
-        "text": impact_result[0],
-        "impact_data": impact_result[1],
-        "structure": structure
+        "text": explanation,
+        "impact_data": impact_data,
+        "structure": structure,
+        "image_url": image_url
     }
 
 
 # =========================================================
 # Feature 3 Router (Standalone)
 # =========================================================
-def run_structure_feature(refined, graph):
+def run_structure_feature(refined: Dict, graph: nx.DiGraph):
     entry_nodes = semantic_entry_discovery(
         refined["concept_entities"],
         refined["queries"]["call_flow"],
         graph
     )
 
-    return run_feature3(
+    structure = run_feature3(
         graph=graph,
         nodes=entry_nodes,
         output_dir="artifacts",
         filename="feature3_structure"
     )
 
+    svg_path = structure.get("svg_path")
+    image_url = f"/artifacts/{Path(svg_path).name}"
+
+
+    return {
+        "structure": structure,
+        "image_url": image_url
+    }
+
 
 # =========================================================
-# Main Router
+# 🚀 MAIN RETRIEVAL ENTRYPOINT (BACKEND CALLS THIS)
 # =========================================================
-def run(user_query: str, frontend_section: str):
-    refined = normalize_user_query(user_query, frontend_section)
+def run(
+    user_query: str,
+    frontend_section: str,
+    graph: nx.DiGraph
+) -> Dict[str, Any]:
+    """
+    PURE RETRIEVAL ORCHESTRATOR.
 
-    with open("code_graph.pkl", "rb") as f:
-        graph = pickle.load(f)
+    Responsibilities:
+    - Normalize user intent
+    - Discover semantic entry points
+    - Route to correct feature
+    - Aggregate responses
+
+    Does NOT:
+    - Load graph
+    - Load vector DB
+    - Manage lifecycle
+    """
+
+    refined = normalize_user_query(
+        user_query,
+        frontend_section
+    )
 
     responses = {}
     primary = refined["primary_intent"]
 
     if primary == "explanation":
-        responses["explanation"] = run_explanation_feature(refined, graph)
+        responses["explanation"] = run_explanation_feature(
+            refined,
+            graph
+        )
 
     elif primary == "impact_analysis":
-        responses["impact_analysis"] = run_impact_feature(refined, graph)
+        responses["impact_analysis"] = run_impact_feature(
+            refined,
+            graph
+        )
 
     elif primary == "call_flow":
-        responses["system_structure"] = run_structure_feature(refined, graph)
+        responses["system_structure"] = run_structure_feature(
+            refined,
+            graph
+        )
 
     return {
         "intent": refined["primary_intent"],
-        "confidence": refined["confidence"],
+        "confidence": refined.get("confidence", 0.0),
         "responses": responses
     }
 
 
 # =========================================================
-# Local Test
+# Optional local testing (dev-only)
 # =========================================================
 if __name__ == "__main__":
-    # q1 = "Explain how authentication works end to end"
-    # print(run(q1, "explanation"))
+    import pickle
 
-    # q2 = "If I change login API what breaks"
-    # print(run(q2, "impact_analysis"))
+    with open("code_graph.pkl", "rb") as f:
+        graph = pickle.load(f)
 
-    q3 = "Show system structure of authentication"
-    print(run(q3, "call_flow"))
+    q = "Show system structure of authentication"
+    print(
+        run(
+            user_query=q,
+            frontend_section="call_flow",
+            graph=graph
+        )
+    )
