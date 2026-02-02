@@ -76,6 +76,7 @@ def langchain_documents(chunks: List[dict], file_path: Path
             Document(
                 page_content=chunk["code"],
                 metadata={
+                    "chunk_id": f"{chunk['file_path']}::{chunk['name']}",
                     "file": str(chunk["file_path"].relative_to(file_path)),
                     "title": chunk["name"],
                     "type": chunk["type"],
@@ -86,7 +87,7 @@ def langchain_documents(chunks: List[dict], file_path: Path
         )
     return docs
 
-def embeddings_and_vectorDB(docs: List[Document],persist_directory: str = "db/chroma_db"):
+def embeddings_and_vectorDB(docs: List[Document],persist_directory: str = "RepoMind/db/chroma_db"):
     embedding_model = HuggingFaceEmbeddings(
         model_name="all-MiniLM-L6-v2"
     )

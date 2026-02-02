@@ -1,121 +1,112 @@
-import os
-from typing import List, Dict
+import json
+import pickle
+from typing import List
+from dotenv import load_dotenv
+
+import networkx as nx
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
-from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-import subprocess
-from RepoMind.retrieval.feature1 import send_to_llm, flow_text
+
 load_dotenv()
-def user_query(query: str, vector_store_path: str = "db/chroma_db")-> List[Document]:
+
+
+def semantic_entry_discovery(
+    concept_entities: List[str],
+    explanation_query: str,
+    graph
+) -> List[str]:
     embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    vector_store = Chroma(
-        persist_directory=vector_store_path,
+
+    vectorstore = Chroma(
+        persist_directory="RepoMind/db/chroma_db",
         embedding_function=embedding_model
     )
-    results: List[Document] = vector_store.similarity_search(query, k=5)
-    return results
+
+    candidate_docs: List[Document] = vectorstore.similarity_search(
+        explanation_query,
+        k=10
+    )
+
+    candidate_nodes = []
+    for doc in candidate_docs:
+        chunk_id = doc.metadata.get("chunk_id")
+        if chunk_id and graph.has_node(chunk_id):
+            candidate_nodes.append(chunk_id)
+
+    scored_nodes = []
+    for node in candidate_nodes:
+        out_degree = graph.out_degree(node)
+        in_degree = graph.in_degree(node)
+        reachable = len(nx.descendants(graph, node))
+        score = (out_degree * 2) + reachable - in_degree
+        scored_nodes.append((node, score))
+
+    if not scored_nodes:
+        return []
+
+    scored_nodes.sort(key=lambda x: x[1], reverse=True)
+    return [scored_nodes[0][0]]
 
 
-
-import json
-
-def normalize_user_query(
-    user_query: str,
-    frontend_section: str
-) -> dict:
+def normalize_user_query(user_query: str, frontend_section: str) -> dict:
     llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+
     system_prompt = f"""
-You are an intent normalization engine for a code intelligence system.
+    You are an intent normalization engine for a code intelligence system.
 
-Your task:
-- DO NOT answer the user question.
-- DO NOT add new meaning.
-- DO NOT remove meaning.
-- DO NOT assume context not present in the query.
-- ONLY classify intent(s) and rewrite the SAME question
-  in intent-specific technical language.
+    Your task:
+    - DO NOT answer the user question.
+    - DO NOT add new meaning.
+    - DO NOT remove meaning.
+    - DO NOT assume context not present in the query.
+    - ONLY classify intent(s) and rewrite the SAME question
+      in intent-specific technical language.
 
-Primary intent is given by the frontend section.
-You may infer secondary intents if clearly implied.
+    Primary intent is given by the frontend section.
+    You may infer secondary intents if clearly implied.
 
-Allowed intents:
-- explanation
-- impact_analysis
-- call_flow
+    Allowed intents:
+    - explanation
+    - impact_analysis
+    - call_flow
 
-Frontend-selected primary intent: {frontend_section}
+    Frontend-selected primary intent: {frontend_section}
 
-Return ONLY valid JSON in the following format:
+    Entity extraction rules:
+    - If the query mentions a specific function, class, or symbol, list it under "symbol_entities".
+    - If the query refers to a high-level concept, list it under "concept_entities".
+    - Do NOT invent entities.
 
-{{
-  "primary_intent": "<one of allowed intents>",
-  "secondary_intents": ["<optional intents>"],
-  "queries": {{
-    "<intent>": "<reformulated query preserving meaning>"
-  }},
-  "entities": ["<symbols, functions, classes if mentioned>"],
-  "confidence": <float between 0 and 1>
-}}
-"""
-
-    user_prompt = f"""
-User query:
-"{user_query}"
-"""
+    Return ONLY valid JSON in the following format:
+    {{
+      "primary_intent": "...",
+      "secondary_intents": [],
+      "queries": {{}},
+      "symbol_entities": [],
+      "concept_entities": [],
+      "needs_semantic_discovery": true,
+      "confidence": 0.0
+    }}
+    """
 
     response = llm.invoke(
         [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_query},
         ]
     )
 
     try:
-        parsed = json.loads(response.content)
-    except json.JSONDecodeError:
-        # Safe fallback — never crash the system
-        parsed = {
+        return json.loads(response.content[0]["text"])
+    except Exception:
+        return {
             "primary_intent": frontend_section,
             "secondary_intents": [],
-            "queries": {
-                frontend_section: user_query
-            },
-            "entities": [],
-            "confidence": 0.5
+            "queries": {frontend_section: user_query},
+            "symbol_entities": [],
+            "concept_entities": [],
+            "needs_semantic_discovery": False,
+            "confidence": 0.5,
         }
-
-    return parsed
-
-
-
-def extract_text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(str(c) for c in content)
-    return str(content)
-
-
-if __name__ == "__main__":
-    sample_query = "Tell me how backend works"
-    meta = reformulate_query_and_detect_intent(sample_query)
-    intent = meta["intent"]
-    refined_query = meta["reformulated_query"]
-    print("Intent:", intent)
-    print("Rewritten Query:", refined_query)
-    retrieved_docs = user_query(refined_query)
-    result = send_to_llm(retrieved_docs, refined_query)
-    flow_output=flow_text(result)
-    with open("flow.mmd", "w") as f:
-        f.write(flow_output)
-    md_file=os.path.abspath("flow.mmd")
-    png_file=os.path.abspath("flow.png")    
-    subprocess.run([
-        r"C:\Program Files\nodejs\npx.cmd", "mmdc", "-i", md_file, "-o", png_file
-    ], check=True)
-        
