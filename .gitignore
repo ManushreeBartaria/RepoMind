@@ -1,54 +1,16 @@
-node_modules
-# Virtual environment
 venv/
-ENV/
-env/
-.venv/
-cloned_files/
-.env
-# Python cache
 __pycache__/
-*.py[cod]
-*.pyo
-code_graph.pkl
-# IDE / Editor configs
-.vscode/
-.idea/
-
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Environment variables
-.env
-
-# Byte-compiled / optimized / DLL files
 *.pyc
+*.pyo
 *.pyd
-*.pdb
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-coverage.xml
-*.cover
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
-
-# Build / packaging
-*.egg
+.Python
 *.egg-info/
 dist/
 build/
-# Vector databases
-db/
-chroma_db/
-*.chroma
-flow.mmd
-flow.png
+.DS_Store
+.env
+node_modules/
+.vscode/
+.idea/
+*.log
+.cache/

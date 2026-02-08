@@ -2,19 +2,19 @@ from typing import Dict, Any
 import networkx as nx
 from pathlib import Path
 
-from retrieval.retrival import (
+from .retrival import (
     normalize_user_query,
     semantic_entry_discovery
 )
 
 # -------- Feature 1 (Explanation) --------
-from retrieval.feature1 import run_feature1
+from .feature1 import run_feature1
 
 # -------- Feature 2 (Impact Analysis) --------
-from retrieval.feature2 import run_feature2
+from .feature2 import run_feature2
 
 # -------- Feature 3 (Visualization / Structure) --------
-from retrieval.feature3 import run_feature3
+from .feature3 import run_feature3
 
 
 # =========================================================

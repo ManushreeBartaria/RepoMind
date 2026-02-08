@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from app.api.ingest_routes import router as ingest_router
-from app.api.query_routes import router as query_router
-from app.api.repository_routes import router as repository_router
+from .app.api.ingest_routes import router as ingest_router
+from .app.api.query_routes import router as query_router
+from .app.api.repository_routes import router as repository_router
 
 app = FastAPI(title="RepoMind API", version="1.0")
 

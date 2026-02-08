@@ -9,17 +9,17 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from Ingestion.python_parser.parse_python_files import ast_parser
-from Ingestion.python_parser.extract_python_calls import extract_python_calls
+from .python_parser.parse_python_files import ast_parser
+from .python_parser.extract_python_calls import extract_python_calls
 
-from Ingestion.java_parser.parse_java_files import java_ast_parser
-from Ingestion.java_parser.extract_java_calls import extract_java_calls
+from .java_parser.parse_java_files import java_ast_parser
+from .java_parser.extract_java_calls import extract_java_calls
 
-from Ingestion.js_parser.parse_js_files import js_ast_parser
-from Ingestion.js_parser.extract_js_calls import extract_js_calls
+from .js_parser.parse_js_files import js_ast_parser
+from .js_parser.extract_js_calls import extract_js_calls
 
-from Ingestion.graph_making import create_graph
-from Ingestion.bridge import infer_frontend_backend_bridges
+from .graph_making import create_graph
+from .bridge import infer_frontend_backend_bridges
 
 load_dotenv()
 
