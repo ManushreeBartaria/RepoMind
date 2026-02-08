@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from Backend.app.schemas.query import QueryRequest, QueryResponse
-from Backend.app.core.state import state
+from app.schemas.query import QueryRequest, QueryResponse
+from app.core.state import state
 from retrieval.main import run
 
 router = APIRouter()

@@ -4,8 +4,8 @@ import uuid
 import pickle
 import subprocess
 
-from Backend.app.core.state import state
-from Backend.app.schemas.ingest import (
+from app.core.state import state
+from app.schemas.ingest import (
     IngestRequest,
     IngestStartResponse,
     IngestStatusResponse,
