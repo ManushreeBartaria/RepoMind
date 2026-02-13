@@ -16,7 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve artifacts folder as static files
 artifacts_path = Path("artifacts")
 artifacts_path.mkdir(exist_ok=True)
 app.mount("/artifacts", StaticFiles(directory="artifacts"), name="artifacts")

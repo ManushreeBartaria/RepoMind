@@ -1,20 +1,24 @@
 version: "3.9"
 services:
   backend:
-    build: ./Backend
+    build: ./mind/Backend
     ports:
       - "8000:8000"
     volumes:
-      - ./Backend:/app
+      - ./mind/Backend:/app
     env_file:
       - .env
-
+    healthcheck:
+      test: ["executable", "arg"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
   frontend:
-    build: ./Frontend
+    build: ./mind/Frontend
     ports:
       - "5173:5173"
     volumes:
-      - ./Frontend:/app
+      - ./mind/Frontend:/app
     environment:
       - VITE_API_BASE_URL=http://backend:8000
     depends_on:

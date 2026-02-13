@@ -83,3 +83,7 @@ def get_status(repo_id: str):
     return {
         "status": repo["status"]
     }
+
+@router.get("/health")
+def heatlth_check():
+    return {"status":"ok"}    
