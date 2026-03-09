@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL;
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://192.168.59.100:30008";
 
 
 export const apiService = {
@@ -8,11 +8,22 @@ export const apiService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ git_url: repoUrl })
     });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || "Failed to analyze repository");
+    }
+    
     return res.json();
   },
 
   async getParsingStatus(repoId) {
     const res = await fetch(`${API_BASE_URL}/ingest/status/${repoId}`);
+    
+    if (!res.ok) {
+      throw new Error("Failed to get parsing status");
+    }
+    
     return res.json();
   },
 

@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["executable", "arg"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -19,6 +19,7 @@ services:
       - "5173:5173"
     volumes:
       - ./mind/Frontend:/app
+      - /app/node_modules
     environment:
       - VITE_API_BASE_URL=http://backend:8000
     depends_on:

@@ -4,6 +4,7 @@ from typing import List, Dict
 from dotenv import load_dotenv
 import pickle
 import hashlib
+import asyncio
 
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -55,12 +56,20 @@ def mark_as_processed(git_url: str):
 # =========================================================
 # Repo cloning
 # =========================================================
-def clone_repo(git_url: str) -> Path:
+def _clone_repo_sync(git_url: str, clone_path: Path) -> None:
+    """Synchronous git clone helper"""
+    git.Repo.clone_from(git_url, clone_path)
+
+
+async def clone_repo(git_url: str) -> Path:
+    """Clone repository asynchronously without blocking event loop"""
     repo_name = git_url.split("/")[-1].replace(".git", "")
     clone_path = Path("cloned_files") / repo_name
 
     if not clone_path.exists():
-        git.Repo.clone_from(git_url, clone_path)
+        # Run blocking git operation in executor to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _clone_repo_sync, git_url, clone_path)
 
     return clone_path
 
@@ -153,7 +162,7 @@ def to_langchain_docs(
 # =========================================================
 # 🚀 MAIN INGESTION ENTRY (BACKEND CALLS THIS)
 # =========================================================
-def run_ingestion(git_url: str) -> Dict:
+async def run_ingestion(git_url: str) -> Dict:
     """
     PURE INGESTION PIPELINE WITH CACHING.
 
@@ -176,7 +185,7 @@ def run_ingestion(git_url: str) -> Dict:
 
     print(f"🔄 Processing repository: {git_url}")
 
-    repo_root = clone_repo(git_url)
+    repo_root = await clone_repo(git_url)
     repo_name = repo_root.name
 
     files = clean_files(repo_root)

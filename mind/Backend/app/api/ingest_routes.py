@@ -2,7 +2,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pathlib import Path
 import uuid
 import pickle
-import subprocess
 
 from ..core.state import state
 from ..schemas.ingest import (
@@ -11,7 +10,7 @@ from ..schemas.ingest import (
     IngestStatusResponse,
     FileTreeNode
 )
-from Ingestion.ingestion import run_ingestion
+from Ingestion.ingestion import run_ingestion, clone_repo
 
 router = APIRouter()
 
@@ -37,9 +36,9 @@ def build_tree(path: Path) -> dict:
     }
 
 
-def ingestion_task(repo_id: str, git_url: str):
+async def ingestion_task(repo_id: str, git_url: str):
     try:
-        run_ingestion(git_url)
+        await run_ingestion(git_url)
 
         with open("code_graph.pkl", "rb") as f:
             state.graph = pickle.load(f)
@@ -52,22 +51,37 @@ def ingestion_task(repo_id: str, git_url: str):
 
 
 @router.post("/repo", response_model=IngestStartResponse)
-def start_ingestion(payload: IngestRequest, bg: BackgroundTasks):
+async def start_ingestion(payload: IngestRequest, background_tasks: BackgroundTasks):
     repo_id = str(uuid.uuid4())
     repo_name = payload.git_url.split("/")[-1].replace(".git", "")
     repo_path = Path("cloned_files") / repo_name
-
-    # Just check if folder exists and build tree
-    tree = build_tree(repo_path) if repo_path.exists() else None
+    
+    # Clone the repository first to get the file tree
+    try:
+        clone_path = await clone_repo(payload.git_url)
+        # Use the returned path from clone_repo
+        repo_path = clone_path
+    except Exception as e:
+        raise HTTPException(500, f"Failed to clone repository: {str(e)}")
+    
+    # Build tree after cloning
+    tree = None
+    if repo_path.exists():
+        try:
+            tree = build_tree(repo_path)
+        except Exception as e:
+            raise HTTPException(500, f"Failed to build file tree: {str(e)}")
+    else:
+        raise HTTPException(500, "Repository directory not found after cloning")
 
     state.repos[repo_id] = {
         "status": "processing",
         "tree": tree
     }
-
-    # Start ingestion in background
-    bg.add_task(ingestion_task, repo_id, payload.git_url)
-
+    
+    # Run the full ingestion in the background
+    background_tasks.add_task(ingestion_task, repo_id, payload.git_url)
+    
     return {
         "repo_id": repo_id,
         "file_tree": tree
@@ -84,6 +98,7 @@ def get_status(repo_id: str):
         "status": repo["status"]
     }
 
+
 @router.get("/health")
-def heatlth_check():
-    return {"status":"ok"}    
+def health_check():
+    return {"status": "ok"}

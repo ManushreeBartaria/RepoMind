@@ -12,7 +12,7 @@ export default function Landing() {
 
   function isValidGithubRepo(url) {
     const pattern =
-      /^(https?:\/\/)?(www\.)?github\.com\/[^\/\s]+\/[^\/\s]+$/;
+      /^(https?:\/\/)?(www\.)?github\.com\/[^\/\s]+\/[^\/\s]+\/?$/;
     return pattern.test(url.trim());
   }
 
@@ -31,8 +31,16 @@ export default function Landing() {
     setError("");
 
     try {
-      // ✅ NEW: start ingestion job
+      // Start ingestion job
       const response = await apiService.ingestRepo(repoUrl);
+
+      if (!response.repo_id) {
+        throw new Error("Invalid response from server");
+      }
+
+      if (!response.file_tree) {
+        throw new Error("Failed to retrieve repository structure");
+      }
 
       navigate("/workspace", {
         state: {
@@ -148,6 +156,11 @@ export default function Landing() {
                 setRepoUrl(e.target.value);
                 setError("");
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !loading) {
+                  handleAnalyze();
+                }
+              }}
               placeholder="https://github.com/owner/repository"
               style={{
                 width: 460,
@@ -177,7 +190,7 @@ export default function Landing() {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              Analyze <ArrowRight size={18} />
+              {loading ? "Analyzing..." : "Analyze"} <ArrowRight size={18} />
             </button>
           </div>
 
