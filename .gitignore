@@ -17,3 +17,4 @@ node_modules/
 db/
 cache/
 chroma_db/
+cloned_files/

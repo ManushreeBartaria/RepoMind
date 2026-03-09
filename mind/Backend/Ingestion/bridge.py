@@ -1,15 +1,3 @@
-"""
-Frontend-to-Backend Semantic Bridge Inference
-
-This module infers semantic connections between JavaScript/React API calls
-and backend handlers (Python/Java), creating HTTP_CALL edges for the code graph.
-
-Layer Responsibility: SEMANTICS
-- Detects frontend API calls (fetch, axios, apiClient)
-- Detects backend entry points (@PostMapping, @app.get, etc)
-- Generates bridge relations with confidence levels
-- DOES NOT modify extractors or add cross-language logic to parsers
-"""
 
 from typing import List, Dict, Optional
 import re
@@ -19,19 +7,6 @@ def infer_frontend_backend_bridges(
     all_chunks: List[dict],
     all_relations: List[dict]
 ) -> List[dict]:
-    """
-    Infers semantic frontend → backend HTTP/API bridges.
-    
-    Returns NEW relations to be added to the graph.
-    These represent cross-language HTTP call connections.
-    
-    Args:
-        all_chunks: List of code chunks with metadata (name, language, code, file_path, params, decorators)
-        all_relations: List of existing relations (calls, imports, etc)
-    
-    Returns:
-        List of new bridge relations with type="http_call", language="cross"
-    """
     
     if not all_chunks or not all_relations:
         return []
@@ -52,12 +27,6 @@ def infer_frontend_backend_bridges(
 
 
 def _detect_frontend_api_calls(all_chunks: List[dict]) -> List[Dict]:
-    """
-    Detect frontend API calls from JavaScript chunks.
-    
-    Looks for: fetch(), axios.*, apiClient.*
-    Returns list of detected API calls with route, method, chunk name, file path.
-    """
     frontend_apis = []
     
     for chunk in all_chunks:
