@@ -9,21 +9,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
 
-# =========================================================
-# Impact traversal (BFS with causal tracking)
-# =========================================================
 def extract_impact_subgraph(
     graph: nx.DiGraph,
     start_nodes: List[str],
     max_depth: int = 4
 ) -> Dict:
-    """
-    BFS-based causal impact traversal.
-    Identifies:
-    - impacted nodes
-    - execution chains
-    - first failure points
-    """
 
     impacted_nodes = set()
     execution_chains = []
@@ -53,8 +43,6 @@ def extract_impact_subgraph(
 
             successors = list(graph.successors(node))
 
-            # Failure heuristic:
-            # leaf node that is not a utility/helper
             if (
                 node != start
                 and not successors
@@ -97,12 +85,11 @@ def extract_impact_subgraph(
     }
 
 
-# =========================================================
-# Chunk retrieval
-# =========================================================
 def fetch_chunks_by_id(
-    chunk_ids: List[str]
+    chunk_ids: List[str],
+    repo_hash: str
 ) -> List[Document]:
+
     if not chunk_ids:
         return []
 
@@ -111,12 +98,12 @@ def fetch_chunks_by_id(
     )
 
     vectorstore = Chroma(
-        persist_directory="RepoMind/db/chroma_db",
+        persist_directory=f"RepoMind/db/chroma_db/{repo_hash}",
         embedding_function=embedding_model
     )
 
     results = vectorstore.get(
-        where={"chunk_id": {"$in": chunk_ids}}
+        where={"hash": {"$in": chunk_ids}}
     )
 
     docs = []
@@ -134,14 +121,12 @@ def fetch_chunks_by_id(
     return docs
 
 
-# =========================================================
-# Impact explanation LLM
-# =========================================================
 def send_to_llm_impact(
     docs: List[Document],
     query: str,
     impact_data: Dict
 ) -> str:
+
     llm = ChatGoogleGenerativeAI(
         model="gemini-3-flash-preview",
         temperature=0
@@ -194,20 +179,12 @@ Question:
     return response.content[0]["text"]
 
 
-# =========================================================
-# Public API
-# =========================================================
 def run_feature2(
     graph: nx.DiGraph,
     changed_nodes: List[str],
-    query: str
+    query: str,
+    repo_hash: str
 ) -> Tuple[str, Dict, List[str]]:
-    """
-    Returns:
-    - impact explanation text
-    - raw impact data
-    - ALL nodes involved (for Feature 3 graph rendering)
-    """
 
     impact_data = extract_impact_subgraph(
         graph,
@@ -222,7 +199,8 @@ def run_feature2(
     )
 
     docs = fetch_chunks_by_id(
-        involved_nodes
+        involved_nodes,
+        repo_hash
     )
 
     explanation = send_to_llm_impact(

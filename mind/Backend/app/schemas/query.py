@@ -1,9 +1,9 @@
 from pydantic import BaseModel
 from typing import Dict, Any, List
-from datetime import datetime
 
 
 class QueryRequest(BaseModel):
+    repo_url: str
     query: str
     intent: str
 
@@ -12,6 +12,7 @@ class QueryResponse(BaseModel):
     intent: str
     confidence: float
     responses: Dict[str, Any]
+    hash:str
 
 
 class ChatHistoryEntry(BaseModel):

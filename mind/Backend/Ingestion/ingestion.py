@@ -42,25 +42,32 @@ def parse_file_worker(args):
 
     language, file_path = args
 
-    if language == "python":
-        chunks, tree = ast_parser(file_path)
-        relations = extract_python_calls(chunks, tree, str(file_path))
-        print("python processing:", file_path)
+    try:
 
-    elif language == "java":
-        chunks, tree = java_ast_parser(file_path)
-        relations = extract_java_calls(chunks, tree, str(file_path))
-        print("java processing:", file_path)
+        if language == "python":
+            chunks, tree = ast_parser(file_path)
+            relations = extract_python_calls(chunks, tree, str(file_path))
+            print("python processing:", file_path)
 
-    elif language == "js":
-        chunks, tree = js_ast_parser(file_path)
-        relations = extract_js_calls(chunks, tree, str(file_path))
-        print("js processing:", file_path)
+        elif language == "java":
+            chunks, tree = java_ast_parser(file_path)
+            relations = extract_java_calls(chunks, tree, str(file_path))
+            print("java processing:", file_path)
 
-    else:
+        elif language == "js":
+            chunks, tree = js_ast_parser(file_path)
+            relations = extract_js_calls(chunks, tree, str(file_path))
+            print("js processing:", file_path)
+
+        else:
+            return language, [], [], file_path
+
+        return language, chunks, relations, file_path
+
+    except Exception as e:
+        print("FAILED FILE:", file_path)
+        print("ERROR:", e)
         return language, [], [], file_path
-
-    return language, chunks, relations, file_path
 
 
 # =========================================================
@@ -76,7 +83,7 @@ def is_already_processed(git_url: str) -> bool:
     cache_file = Path(f"cache/{repo_hash}.done")
     graph_file = Path(f"graphs/{repo_hash}.pkl")
     chroma_dir = Path(f"RepoMind/db/chroma_db/{repo_hash}")
-
+    print("INGEST CHROMA PATH:", chroma_dir)
     return cache_file.exists() and graph_file.exists() and chroma_dir.exists()
 
 
@@ -292,8 +299,9 @@ async def run_ingestion(git_url: str) -> Dict:
         try:
             results = list(executor.map(parse_file_worker, tasks, chunksize=1))
         except Exception as e:
-            print("Worker error:", e)
 
+            print("Worker error:", e)
+        
     # ------------------------------------------------
     # Process results
     # ------------------------------------------------
@@ -323,7 +331,8 @@ async def run_ingestion(git_url: str) -> Dict:
     repo_hash = get_repo_hash(git_url)
 
     docs = to_langchain_docs(all_chunks, repo_root)
-
+    print("TOTAL CHUNKS:", len(all_chunks))
+    print("DOCS CREATED:", len(docs))
     chroma_dir = Path(f"RepoMind/db/chroma_db/{repo_hash}")
 
     print("Creating graph and embeddings in parallel...")

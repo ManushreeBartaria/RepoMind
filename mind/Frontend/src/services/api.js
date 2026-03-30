@@ -1,5 +1,7 @@
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+let currentRepoUrl = null;
+
 export const apiService = {
   async ingestRepo(repoUrl) {
     const res = await fetch(`${API_BASE_URL}/ingest/repo`, {
@@ -12,6 +14,9 @@ export const apiService = {
       const errorData = await res.json().catch(() => ({}));
       throw new Error(errorData.detail || "Failed to analyze repository");
     }
+
+    // store repo url for future queries
+    currentRepoUrl = repoUrl;
     
     return res.json();
   },
@@ -39,10 +44,18 @@ export const apiService = {
   },
 
   async queryRepo(message, intent) {
+    if (!currentRepoUrl) {
+      throw new Error("No repository selected. Please ingest a repository first.");
+    }
+
     const res = await fetch(`${API_BASE_URL}/query/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: message, intent })
+      body: JSON.stringify({
+        repo_url: currentRepoUrl,
+        query: message,
+        intent
+      })
     });
     
     if (!res.ok) {
