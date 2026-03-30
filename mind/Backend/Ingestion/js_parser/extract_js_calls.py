@@ -12,6 +12,12 @@ def extract_js_calls(chunks, tree, file_name):
     for chunk in chunks:
         chunk_map[chunk["name"]] = chunk
 
+    # NEW: Build line → chunk map
+    line_map = {}
+    for chunk in chunks:
+        for line in range(chunk["start_line"], chunk["end_line"] + 1):
+            line_map[line] = chunk["name"]
+
     def extract_params(node):
         params = []
         for child in node.children:
@@ -26,6 +32,7 @@ def extract_js_calls(chunks, tree, file_name):
         return params
 
     def walk(node):
+
         start_line = node.start_point[0] + 1 if node.start_point else None
 
         if node.type == "import_statement":
@@ -38,12 +45,14 @@ def extract_js_calls(chunks, tree, file_name):
             })
 
         if node.type == "class_declaration":
+
             class_name = None
             parent_class = None
 
             for child in node.children:
                 if child.type == "identifier":
                     class_name = child.text.decode("utf-8")
+
                 if child.type == "class_heritage":
                     for g in child.children:
                         if g.type == "identifier":
@@ -58,50 +67,54 @@ def extract_js_calls(chunks, tree, file_name):
                     "confidence": "explicit"
                 })
 
-        for chunk in chunks:
-            if start_line and chunk["start_line"] <= start_line <= chunk["end_line"]:
-                caller = chunk["name"]
+        # NEW: constant-time caller lookup
+        caller = None
+        if start_line:
+            caller = line_map.get(start_line)
 
-                if node.type == "call_expression":
-                    for child in node.children:
-                        if child.type == "identifier":
-                            relations.append({
-                                "from": caller,
-                                "to": child.text.decode("utf-8"),
-                                "type": "call",
-                                "language": "javascript",
-                                "confidence": "syntactic"
-                            })
+        if caller:
 
-                if node.type == "new_expression":
-                    for child in node.children:
-                        if child.type == "identifier":
-                            relations.append({
-                                "from": caller,
-                                "to": child.text.decode("utf-8"),
-                                "type": "instantiates",
-                                "language": "javascript",
-                                "confidence": "explicit"
-                            })
+            if node.type == "call_expression":
+                for child in node.children:
+                    if child.type == "identifier":
+                        relations.append({
+                            "from": caller,
+                            "to": child.text.decode("utf-8"),
+                            "type": "call",
+                            "language": "javascript",
+                            "confidence": "syntactic"
+                        })
+
+            if node.type == "new_expression":
+                for child in node.children:
+                    if child.type == "identifier":
+                        relations.append({
+                            "from": caller,
+                            "to": child.text.decode("utf-8"),
+                            "type": "instantiates",
+                            "language": "javascript",
+                            "confidence": "explicit"
+                        })
 
         if node.type in (
             "function_declaration",
             "method_definition",
             "arrow_function",
         ):
+
             name = None
+
             for child in node.children:
                 if child.type == "identifier":
                     name = child.text.decode("utf-8")
 
             params = extract_params(node)
-            
-            # Add parameters to the chunk metadata
+
             if name and name in chunk_map:
                 if "params" not in chunk_map[name]:
                     chunk_map[name]["params"] = []
                 chunk_map[name]["params"].extend(params)
-            
+
             if name:
                 for p in params:
                     relations.append({
@@ -125,4 +138,5 @@ def extract_js_calls(chunks, tree, file_name):
             walk(child)
 
     walk(tree.root_node)
+
     return relations

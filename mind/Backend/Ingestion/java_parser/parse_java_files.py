@@ -3,7 +3,10 @@ import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
 from pathlib import Path
 from typing import List
+import hashlib
 
+def compute_chunk_hash(code):
+    return hashlib.sha1(code.encode()).hexdigest()
 
 JAVA_LANGUAGE = Language(tsjava.language())
 def java_ast_parser(file_path: Path):
@@ -59,14 +62,16 @@ def java_ast_parser(file_path: Path):
                 if child.type in ("annotation", "marker_annotation"):
                     decorators.append(child.text.decode("utf-8"))
             
+            code = "\n".join(source.splitlines()[start - 1:end])
             chunks.append({
                 "name": name,
                 "file_path": file_path,
                 "type": chunk_type,
-                "code": "\n".join(source.splitlines()[start - 1:end]),
+                "code": code,
                 "start_line": start,
                 "end_line": end,
                 "decorators": decorators,
+                "hash": compute_chunk_hash(code)  
             })
         for child in node.children:
             walk(child)
@@ -79,5 +84,6 @@ def java_ast_parser(file_path: Path):
             "code": source,
             "start_line": 1,
             "end_line": len(source.splitlines()),
+            "hash": compute_chunk_hash(source)
         })
     return chunks,tree

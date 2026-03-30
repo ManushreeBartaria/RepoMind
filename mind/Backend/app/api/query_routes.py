@@ -35,7 +35,3 @@ def clear_chat_history():
     state.save_history()
     return {"message": "Chat history cleared"}
 
-    # Save to chat history
-    state.add_to_history(payload.query, payload.intent, response)
-
-    return response
