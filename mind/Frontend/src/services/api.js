@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://192.168.59.100:30008";
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 export const apiService = {
   async ingestRepo(repoUrl) {
@@ -47,6 +47,28 @@ export const apiService = {
     
     if (!res.ok) {
       throw new Error("Query failed");
+    }
+    
+    return res.json();
+  },
+
+  async getChatHistory() {
+    const res = await fetch(`${API_BASE_URL}/query/history`);
+    
+    if (!res.ok) {
+      throw new Error("Failed to fetch chat history");
+    }
+    
+    return res.json();
+  },
+
+  async clearChatHistory() {
+    const res = await fetch(`${API_BASE_URL}/query/history`, {
+      method: "DELETE"
+    });
+    
+    if (!res.ok) {
+      throw new Error("Failed to clear chat history");
     }
     
     return res.json();

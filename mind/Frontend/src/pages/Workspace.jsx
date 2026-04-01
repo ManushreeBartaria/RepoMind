@@ -26,6 +26,10 @@ export default function Workspace() {
   const [starredResponses, setStarredResponses] = useState([]);
   const [showStarred, setShowStarred] = useState(false);
 
+  // Chat history
+  const [chatHistory, setChatHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+
   // Image modal state
   const [modalImage, setModalImage] = useState(null);
   const [imageZoom, setImageZoom] = useState(1);
@@ -260,6 +264,53 @@ export default function Workspace() {
     setImageZoom((prev) => Math.max(prev - 0.25, 0.5));
   };
 
+  /* ---------------- CHAT HISTORY ---------------- */
+  const loadChatHistory = async () => {
+    try {
+      const history = await apiService.getChatHistory();
+      setChatHistory(history.history || []);
+    } catch (err) {
+      console.error("Failed to load chat history:", err);
+    }
+  };
+
+  const clearChatHistory = async () => {
+    try {
+      await apiService.clearChatHistory();
+      setChatHistory([]);
+      // Also clear current messages if needed
+      setMessages([
+        { sender: "ai", text: "Repository ingested successfully. Ask me anything about the codebase." },
+      ]);
+    } catch (err) {
+      console.error("Failed to clear chat history:", err);
+    }
+  };
+
+  const loadHistoryEntry = (entry) => {
+    // Load a specific history entry into current chat
+    const userMessage = { sender: "user", text: entry.query };
+    const aiResponse = {
+      sender: "ai",
+      text: entry.response?.responses?.[entry.intent]?.text || "Response not available",
+      imageUrl: entry.response?.responses?.[entry.intent]?.image_url 
+        ? `http://localhost:8000${entry.response.responses[entry.intent].image_url}?t=${Date.now()}`
+        : null,
+      starred: false,
+      id: Date.now(),
+    };
+    
+    setMessages([userMessage, aiResponse]);
+    setShowHistory(false);
+  };
+
+  // Load history on component mount
+  useEffect(() => {
+    if (parsingComplete) {
+      loadChatHistory();
+    }
+  }, [parsingComplete]);
+
   /* ---------------- UI ---------------- */
   return (
     <div
@@ -332,13 +383,16 @@ export default function Workspace() {
             }}
           >
             <button
-              onClick={() => setShowStarred(false)}
+              onClick={() => {
+                setShowStarred(false);
+                setShowHistory(false);
+              }}
               style={{
                 flex: 1,
                 padding: "12px",
-                background: !showStarred ? "#1e293b" : "transparent",
+                background: !showStarred && !showHistory ? "#1e293b" : "transparent",
                 border: "none",
-                color: !showStarred ? "#60a5fa" : "#94a3b8",
+                color: !showStarred && !showHistory ? "#60a5fa" : "#94a3b8",
                 cursor: "pointer",
                 fontSize: 13,
                 fontWeight: 600,
@@ -347,7 +401,10 @@ export default function Workspace() {
               Files
             </button>
             <button
-              onClick={() => setShowStarred(true)}
+              onClick={() => {
+                setShowStarred(true);
+                setShowHistory(false);
+              }}
               style={{
                 flex: 1,
                 padding: "12px",
@@ -366,11 +423,89 @@ export default function Workspace() {
               <Star size={14} fill={showStarred ? "#fbbf24" : "none"} stroke={showStarred ? "#fbbf24" : "#94a3b8"} />
               Starred ({starredResponses.length})
             </button>
+            <button
+              onClick={() => {
+                setShowStarred(false);
+                setShowHistory(true);
+              }}
+              style={{
+                flex: 1,
+                padding: "12px",
+                background: showHistory ? "#1e293b" : "transparent",
+                border: "none",
+                color: showHistory ? "#60a5fa" : "#94a3b8",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              History ({chatHistory.length})
+            </button>
           </div>
 
           {/* CONTENT */}
           <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-            {!showStarred ? (
+            {showHistory ? (
+              // CHAT HISTORY
+              <div>
+                <div style={{ padding: "12px 0", borderBottom: "1px solid #1e293b", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ margin: 0, color: "#e5e7eb", fontSize: 14 }}>Chat History</h3>
+                    <button
+                      onClick={clearChatHistory}
+                      style={{
+                        background: "#dc2626",
+                        color: "#fff",
+                        border: "none",
+                        padding: "4px 8px",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+                {chatHistory.length === 0 ? (
+                  <div style={{ padding: 12, color: "#64748b", fontSize: 12, textAlign: "center" }}>
+                    No chat history yet
+                  </div>
+                ) : (
+                  chatHistory.map((entry, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: "#1e293b",
+                        padding: 12,
+                        borderRadius: 6,
+                        marginBottom: 8,
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                      onClick={() => loadHistoryEntry(entry)}
+                    >
+                      <div style={{ color: "#94a3b8", marginBottom: 4, fontSize: 10 }}>
+                        {new Date(entry.timestamp).toLocaleString()}
+                      </div>
+                      <div style={{ color: "#60a5fa", marginBottom: 4, fontSize: 11 }}>
+                        Intent: {entry.intent}
+                      </div>
+                      <div style={{ color: "#e5e7eb", lineHeight: 1.4, marginBottom: 4 }}>
+                        <strong>Q:</strong> {entry.query}
+                      </div>
+                      <div style={{ color: "#94a3b8", lineHeight: 1.4 }}>
+                        <strong>A:</strong> {entry.response?.responses?.[entry.intent]?.text?.substring(0, 100) || "Response not available"}...
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : !showStarred ? (
               // FILE TREE
               fileTree ? (
                 <TreeNode
