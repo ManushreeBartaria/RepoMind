@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+=======
+const API_BASE_URL = "http://127.0.0.1:8000";
+
+let currentRepoUrl = null;
+>>>>>>> 81426f0459cbfe3e235c8be0cd8b79ee0b53b473
 
 export const apiService = {
   async ingestRepo(repoUrl) {
@@ -12,6 +18,9 @@ export const apiService = {
       const errorData = await res.json().catch(() => ({}));
       throw new Error(errorData.detail || "Failed to analyze repository");
     }
+
+    // store repo url for future queries
+    currentRepoUrl = repoUrl;
     
     return res.json();
   },
@@ -39,10 +48,18 @@ export const apiService = {
   },
 
   async queryRepo(message, intent) {
+    if (!currentRepoUrl) {
+      throw new Error("No repository selected. Please ingest a repository first.");
+    }
+
     const res = await fetch(`${API_BASE_URL}/query/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: message, intent })
+      body: JSON.stringify({
+        repo_url: currentRepoUrl,
+        query: message,
+        intent
+      })
     });
     
     if (!res.ok) {

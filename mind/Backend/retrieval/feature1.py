@@ -19,10 +19,6 @@ def extract_flow_subgraph(
     max_depth: int = 3,
     helper_depth: int = 1
 ) -> List[str]:
-    """
-    Extracts execution-relevant nodes for explanation.
-    This is the ONLY traversal Feature 1 performs.
-    """
 
     visited = set()
     ordered = []
@@ -41,11 +37,9 @@ def extract_flow_subgraph(
         visited.add(node)
         ordered.append(node)
 
-        # Main execution path (BFS)
         for succ in graph.successors(node):
             queue.append((succ, depth + 1))
 
-        # Helper context (very shallow)
         if depth <= helper_depth:
             for pred in graph.predecessors(node):
                 if pred not in visited:
@@ -59,8 +53,10 @@ def extract_flow_subgraph(
 # =========================================================
 def fetch_chunks_by_id(
     chunk_ids: List[str],
-    graph: nx.DiGraph
+    graph: nx.DiGraph,
+    repo_hash: str
 ) -> List[Document]:
+
     if not chunk_ids:
         return []
 
@@ -69,21 +65,21 @@ def fetch_chunks_by_id(
     )
 
     vectorstore = Chroma(
-        persist_directory="RepoMind/db/chroma_db",
+        persist_directory=f"RepoMind/db/chroma_db/{repo_hash}",
         embedding_function=embedding_model
     )
+    print("FLOW NODES:", chunk_ids)
 
-    # Remove non-code nodes (parameters etc.)
     valid_ids = [
         cid for cid in chunk_ids
         if graph.nodes.get(cid, {}).get("type") != "parameter"
     ]
-
+    print("VALID IDS:", valid_ids)
     if not valid_ids:
         return []
 
     results = vectorstore.get(
-        where={"chunk_id": {"$in": valid_ids}}
+        where={"hash": {"$in": valid_ids}}
     )
 
     docs = []
@@ -98,6 +94,8 @@ def fetch_chunks_by_id(
             )
         )
 
+    print("DOCS FOUND:", len(results.get("documents", [])))    
+
     return docs
 
 
@@ -108,6 +106,7 @@ def send_to_llm(
     docs: List[Document],
     query: str
 ) -> str:
+
     llm = ChatGoogleGenerativeAI(
         model="gemini-3-flash-preview",
         temperature=0
@@ -150,13 +149,9 @@ Question:
 def run_feature1(
     graph: nx.DiGraph,
     entry_nodes: List[str],
-    query: str
+    query: str,
+    repo_hash: str
 ) -> Tuple[str, List[str]]:
-    """
-    Returns:
-    - explanation text
-    - nodes used (for Feature 3 graph rendering)
-    """
 
     flow_nodes = extract_flow_subgraph(
         graph,
@@ -165,7 +160,8 @@ def run_feature1(
 
     docs = fetch_chunks_by_id(
         flow_nodes,
-        graph
+        graph,
+        repo_hash
     )
 
     if not docs:

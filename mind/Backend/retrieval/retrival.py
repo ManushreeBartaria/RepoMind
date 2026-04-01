@@ -23,10 +23,10 @@ def get_embedding_model():
     )
 
 
-@lru_cache(maxsize=1)
-def get_vectorstore():
+@lru_cache(maxsize=10)
+def get_vectorstore(repo_hash: str):
     return Chroma(
-        persist_directory="RepoMind/db/chroma_db",
+        persist_directory=f"RepoMind/db/chroma_db/{repo_hash}",
         embedding_function=get_embedding_model()
     )
 
@@ -46,14 +46,13 @@ def semantic_entry_discovery(
     concept_entities: List[str],
     explanation_query: str,
     graph: nx.DiGraph,
+    repo_hash: str,
     top_k: int = 3
 ) -> List[str]:
-    """
-    Finds the most relevant entry nodes in the code graph
-    using semantic similarity + graph centrality.
-    """
 
-    vectorstore = get_vectorstore()
+    vectorstore = get_vectorstore(repo_hash)
+    print("RETRIEVAL PATH:", f"RepoMind/db/chroma_db/{repo_hash}")
+    print("VECTORSTORE COUNT:", vectorstore._collection.count())
 
     candidate_docs: List[Document] = vectorstore.similarity_search(
         explanation_query,
@@ -62,10 +61,12 @@ def semantic_entry_discovery(
 
     candidate_nodes = []
     for doc in candidate_docs:
-        cid = doc.metadata.get("chunk_id")
-        if cid and graph.has_node(cid):
-            candidate_nodes.append(cid)
-
+        chunk_hash = doc.metadata.get("hash")
+        if chunk_hash and graph.has_node(chunk_hash):
+            candidate_nodes.append(chunk_hash)
+        print("VECTOR RESULT HASH:", doc.metadata.get("hash"))
+        print("GRAPH HAS NODE:", graph.has_node(doc.metadata.get("hash")))   
+    print("Candidate nodes from vector search:", candidate_nodes)
     if not candidate_nodes:
         return []
 
@@ -90,10 +91,6 @@ def normalize_user_query(
     user_query: str,
     frontend_section: str
 ) -> Dict:
-    """
-    Normalizes raw user query into intent-aware technical queries.
-    DOES NOT answer the question.
-    """
 
     llm = get_llm()
 
@@ -151,7 +148,6 @@ Return ONLY valid JSON:
         return parsed
 
     except Exception:
-        # Safe fallback (NO extra LLM calls)
         return {
             "primary_intent": frontend_section,
             "secondary_intents": [],

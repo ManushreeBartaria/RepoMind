@@ -106,8 +106,16 @@ Thumbs.db
 
 # Cache directories
 cache/
+<<<<<<< HEAD
 .cache/
 
 # Package manager lock files (optional - uncomment if you want to ignore these)
 # package-lock.json
 # yarn.lock
+=======
+chroma_db/
+cloned_files/
+graphs/
+mind/backend/cloned_files
+mind/backend/graphs
+>>>>>>> 81426f0459cbfe3e235c8be0cd8b79ee0b53b473

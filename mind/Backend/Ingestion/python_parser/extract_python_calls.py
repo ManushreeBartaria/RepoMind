@@ -9,6 +9,12 @@ def extract_python_calls(chunks, tree, file_name):
     for chunk in chunks:
         chunk_map[chunk["name"]] = chunk
 
+    # NEW: Build line → chunk map for O(1) lookup
+    line_map = {}
+    for chunk in chunks:
+        for line in range(chunk["start_line"], chunk["end_line"] + 1):
+            line_map[line] = chunk["name"]
+
     def extract_params(func_node):
         params = []
 
@@ -81,57 +87,58 @@ def extract_python_calls(chunks, tree, file_name):
                         })
 
     for node in ast.walk(tree):
+
         if not hasattr(node, "lineno"):
             continue
 
-        for chunk in chunks:
-            if not (chunk["start_line"] <= node.lineno <= chunk["end_line"]):
-                continue
+        # NEW: constant-time lookup instead of scanning all chunks
+        caller = line_map.get(node.lineno)
 
-            caller = chunk["name"]
+        if not caller:
+            continue
 
-            if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name):
-                    callee = node.func.id
-                elif isinstance(node.func, ast.Attribute):
-                    callee = node.func.attr
-                else:
-                    callee = ast.dump(node.func)
+        if isinstance(node, ast.Call):
 
+            if isinstance(node.func, ast.Name):
+                callee = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                callee = node.func.attr
+            else:
+                callee = ast.dump(node.func)
+
+            relations.append({
+                "from": caller,
+                "to": callee,
+                "type": "call",
+                "language": "python",
+                "line": node.lineno,
+                "confidence": "syntactic"
+            })
+
+            if isinstance(node.func, ast.Name):
                 relations.append({
                     "from": caller,
-                    "to": callee,
-                    "type": "call",
+                    "to": node.func.id,
+                    "type": "instantiates",
                     "language": "python",
                     "line": node.lineno,
-                    "confidence": "syntactic"
+                    "confidence": "heuristic"
                 })
 
-                if isinstance(node.func, ast.Name):
-                    relations.append({
-                        "from": caller,
-                        "to": node.func.id,
-                        "type": "instantiates",
-                        "language": "python",
-                        "line": node.lineno,
-                        "confidence": "heuristic"
-                    })
-
-            if isinstance(node, ast.Return):
-                relations.append({
-                    "from": caller,
-                    "to": "return",
-                    "type": "returns",
-                    "language": "python",
-                    "line": node.lineno,
-                    "confidence": "explicit"
-                })
+        if isinstance(node, ast.Return):
+            relations.append({
+                "from": caller,
+                "to": "return",
+                "type": "returns",
+                "language": "python",
+                "line": node.lineno,
+                "confidence": "explicit"
+            })
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             params = extract_params(node)
             
-            # Add parameters to the chunk metadata
             if node.name in chunk_map:
                 if "params" not in chunk_map[node.name]:
                     chunk_map[node.name]["params"] = []

@@ -10,7 +10,7 @@ from ..schemas.ingest import (
     IngestStatusResponse,
     FileTreeNode
 )
-from Ingestion.ingestion import run_ingestion, clone_repo
+from Ingestion.ingestion import run_ingestion, clone_repo, get_repo_hash
 
 router = APIRouter()
 
@@ -40,7 +40,11 @@ async def ingestion_task(repo_id: str, git_url: str):
     try:
         await run_ingestion(git_url)
 
-        with open("code_graph.pkl", "rb") as f:
+        # Load repo specific graph
+        repo_hash = get_repo_hash(git_url)
+        graph_path = Path("graphs") / f"{repo_hash}.pkl"
+
+        with open(graph_path, "rb") as f:
             state.graph = pickle.load(f)
 
         state.repos[repo_id]["status"] = "completed"
